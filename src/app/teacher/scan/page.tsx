@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AppLayout from '@/components/AppLayout';
 import { SessionUser } from '@/lib/auth';
 import { sound } from '@/components/AudioPlayer';
 import Link from 'next/link';
+import jsQR from 'jsqr';
 import {
   Camera,
   CheckCircle2,
@@ -12,16 +13,15 @@ import {
   AlertTriangle,
   Clock,
   User,
-  School,
   RotateCcw,
   Sparkles,
   Volume2,
   ScanLine,
   ExternalLink,
-  ShieldAlert,
-  Calendar,
   Check,
   FlipHorizontal,
+  Zap,
+  SwitchCamera,
 } from 'lucide-react';
 
 interface ScanResult {
@@ -59,16 +59,24 @@ export default function TeacherScanPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [recentScans, setRecentScans] = useState<ScanResult[]>([]);
   const [isMirrored, setIsMirrored] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [hasTorch, setHasTorch] = useState(false);
+  const [isTorchOn, setIsTorchOn] = useState(false);
+
+  // Direct Hardware Video & Frame References
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animationFrameIdRef = useRef<number | null>(null);
+  const barcodeDetectorRef = useRef<any>(null);
 
   // Synchronous locks & token tracking (immune to asynchronous React closures)
-  const scannerRef = useRef<any>(null);
-  const isStartingRef = useRef(false);
   const isProcessingRef = useRef(false);
   const lastScannedTokenRef = useRef<string>('');
   const lastScannedTimeRef = useRef<number>(0);
   const studentCacheRef = useRef<Map<string, any>>(new Map());
 
-  // Load client cached data after hydration to prevent React error #418 & #425
+  // Load client cached data after hydration
   useEffect(() => {
     try {
       const cached = localStorage.getItem('smartsiswa_user');
@@ -112,7 +120,7 @@ export default function TeacherScanPage() {
   }, []);
 
   // Process token verification & attendance recording with hardware lock & anti-repeat
-  const processToken = async (tokenStr: string, isManual = false) => {
+  const processToken = useCallback(async (tokenStr: string, isManual = false) => {
     const trimmed = (tokenStr || '').trim();
     if (!trimmed) return;
 
@@ -121,13 +129,13 @@ export default function TeacherScanPage() {
     // 1. Thread-safe lock: drop frame immediately if already processing
     if (isProcessingRef.current) return;
 
-    // 2. Anti-repeat check for the SAME student: 5s cooldown so the same card doesn't trigger repeatedly
-    if (!isManual && trimmed === lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 5000)) {
+    // 2. Anti-repeat check for the SAME student: 4s cooldown so the same card doesn't trigger repeatedly
+    if (!isManual && trimmed === lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 4000)) {
       return;
     }
 
-    // 3. Ultra-fast cooldown between DIFFERENT students: only 300ms (queue moves at lightning speed!)
-    if (!isManual && trimmed !== lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 300)) {
+    // 3. Ultra-fast cooldown between DIFFERENT students: only 200ms (instant Alfamart speed!)
+    if (!isManual && trimmed !== lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 200)) {
       return;
     }
 
@@ -140,7 +148,7 @@ export default function TeacherScanPage() {
     // 0ms Instant optimistic display & instant audio feedback from browser pre-cache
     const cachedStudent = studentCacheRef.current.get(trimmed);
     if (cachedStudent) {
-      sound.playSuccess(); // DING IMMEDIATELY! ZERO LATENCY!
+      sound.playSuccess(); // BEEP IMMEDIATELY! ZERO LATENCY!
       setScanResult({
         success: true,
         code: 'SUCCESS',
@@ -165,7 +173,7 @@ export default function TeacherScanPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token: trimmed,
-          deviceInfo: navigator.userAgent.includes('Mobile') ? 'Kamera HP' : 'Webcam Laptop',
+          deviceInfo: navigator.userAgent.includes('Mobile') ? 'Kamera HP (Native 60FPS)' : 'Webcam Laptop (Native 60FPS)',
         }),
       });
 
@@ -196,136 +204,189 @@ export default function TeacherScanPage() {
         error: 'Gagal menghubungi server.',
       });
     } finally {
-      // Release lock in only 300ms so the NEXT student in line scans INSTANTLY!
+      // Release lock in only 200ms so the NEXT student in line scans INSTANTLY!
       setTimeout(() => {
         isProcessingRef.current = false;
         setIsProcessing(false);
-      }, 300);
+      }, 200);
     }
-  };
+  }, []);
 
-  // Safe camera starter: continuous 25FPS stream with FULL-FRAME decoding (no tiny box limits)
-  const startScanner = async () => {
-    if (isStartingRef.current) return;
-    isStartingRef.current = true;
+  // 60FPS Continuous Hardware Scanning Loop
+  const scanFrame = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) {
+      animationFrameIdRef.current = requestAnimationFrame(scanFrame);
+      return;
+    }
 
+    // Fast-path: Check Native Hardware BarcodeDetector API (Chrome / Edge / Android)
+    if (barcodeDetectorRef.current && !isProcessingRef.current) {
+      barcodeDetectorRef.current
+        .detect(video)
+        .then((barcodes: any[]) => {
+          if (barcodes && barcodes.length > 0) {
+            const raw = barcodes[0].rawValue;
+            if (raw) {
+              processToken(raw);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          animationFrameIdRef.current = requestAnimationFrame(scanFrame);
+        });
+      return;
+    }
+
+    // Fallback: Ultra-Fast jsQR on Raw Image Buffer
+    if (!isProcessingRef.current) {
+      let canvas = canvasRef.current;
+      if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvasRef.current = canvas;
+      }
+
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
+      if (width > 0 && height > 0) {
+        // Downsample slightly for maximum performance if high-res stream
+        const targetWidth = Math.min(width, 640);
+        const targetHeight = Math.floor((height / width) * targetWidth);
+
+        if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+        }
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+          const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert',
+          });
+
+          if (code && code.data) {
+            processToken(code.data);
+          }
+        }
+      }
+    }
+
+    animationFrameIdRef.current = requestAnimationFrame(scanFrame);
+  }, [processToken]);
+
+  // Start Hardware Camera Stream (Direct getUserMedia)
+  const startCamera = useCallback(async (mode: 'environment' | 'user' = facingMode) => {
     try {
       setCameraError(null);
 
-      // Wait until #qr-reader element is guaranteed to be in DOM
-      let attempts = 0;
-      while (!document.getElementById('qr-reader') && attempts < 30) {
-        await new Promise((r) => setTimeout(r, 50));
-        attempts++;
+      // Stop existing stream if running
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
       }
 
-      const container = document.getElementById('qr-reader');
-      if (!container) {
-        isStartingRef.current = false;
-        return;
-      }
-
-      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-
-      // If scanner is already actively running, preserve it
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        setCameraActive(true);
-        isStartingRef.current = false;
-        return;
-      }
-
-      // Safely stop and clear previous scanner instance
-      if (scannerRef.current) {
+      // Initialize Native Hardware BarcodeDetector if supported
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
         try {
-          if (scannerRef.current.isScanning) {
-            await scannerRef.current.stop();
-          }
-        } catch (e) {}
-        try {
-          scannerRef.current.clear();
-        } catch (e) {}
-        scannerRef.current = null;
+          barcodeDetectorRef.current = new (window as any).BarcodeDetector({
+            formats: ['qr_code', 'code_128', 'ean_13', 'ean_8', 'code_39', 'upc_a'],
+          });
+        } catch (e) {
+          barcodeDetectorRef.current = null;
+        }
       }
 
-      container.innerHTML = '';
-
-      const qrScanner = new Html5Qrcode('qr-reader', {
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        verbose: false,
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true,
+      // High-FPS Stream Constraints
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: { ideal: mode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 60, min: 30 },
         },
-      });
-      scannerRef.current = qrScanner;
-
-      const scanSuccessCallback = (decodedText: string) => {
-        processToken(decodedText);
+        audio: false,
       };
 
-      // Full-frame scanning without qrbox restriction:
-      // Scans instantly the millisecond ANY part of the QR code enters the camera view!
-      try {
-        await qrScanner.start(
-          { facingMode: 'environment' },
-          {
-            fps: 25,
-          },
-          scanSuccessCallback,
-          () => {}
-        );
-      } catch (backErr) {
-        console.warn('Back camera not available, falling back to front camera/webcam:', backErr);
-        // Fallback for laptop or front-only devices
-        await qrScanner.start(
-          { facingMode: 'user' },
-          {
-            fps: 25,
-          },
-          scanSuccessCallback,
-          () => {}
-        );
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        await videoRef.current.play();
+      }
+
+      // Check for flashlight capability
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const capabilities: any = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+        setHasTorch(!!capabilities.torch);
       }
 
       setCameraActive(true);
       setCameraError(null);
+
+      // Start 60FPS Scanning Loop
+      animationFrameIdRef.current = requestAnimationFrame(scanFrame);
     } catch (err: any) {
-      console.warn('Camera start error or permission denied:', err);
+      console.warn('Camera start error:', err);
+      // Fallback for user mode (front webcam) if environment camera fails
+      if (mode === 'environment') {
+        setFacingMode('user');
+        startCamera('user');
+        return;
+      }
+
       setCameraActive(false);
       setCameraError(
         'Kamera belum aktif. Pastikan izin kamera telah diizinkan di ikon gembok browser Anda.'
       );
-    } finally {
-      isStartingRef.current = false;
+    }
+  }, [facingMode, scanFrame]);
+
+  // Toggle Flashlight / Torch
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track: any = streamRef.current.getVideoTracks()[0];
+    if (track && track.applyConstraints) {
+      try {
+        const nextState = !isTorchOn;
+        await track.applyConstraints({
+          advanced: [{ torch: nextState }],
+        });
+        setIsTorchOn(nextState);
+      } catch (e) {}
     }
   };
 
-  // Start html5-qrcode scanner automatically on mount
-  useEffect(() => {
-    let isMounted = true;
+  // Switch Camera (Front <-> Back)
+  const switchCameraMode = () => {
+    const nextMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
+    startCamera(nextMode);
+  };
 
-    const initTimer = setTimeout(() => {
-      if (isMounted) {
-        startScanner();
-      }
-    }, 100);
+  // Auto-start camera on mount
+  useEffect(() => {
+    startCamera();
 
     return () => {
-      isMounted = false;
-      clearTimeout(initTimer);
-      if (scannerRef.current) {
-        try {
-          const s = scannerRef.current as any;
-          if (s.isScanning) {
-            s.stop().catch(() => {}).then(() => {
-              try {
-                s.clear();
-              } catch (e) {}
-            });
-          }
-        } catch (e) {}
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
+  }, [startCamera]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -441,56 +502,16 @@ export default function TeacherScanPage() {
             box-sizing: border-box;
           }
 
-          #qr-reader {
-            width: 100% !important;
-            height: 100% !important;
-            border: none !important;
-            background: transparent !important;
-            position: absolute !important;
-            inset: 0 !important;
-            overflow: hidden !important;
-            padding: 0 !important;
-            margin: 0 !important;
+          .direct-video-stream {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: ${isMirrored ? 'scaleX(-1)' : 'none'};
+            border-radius: 12px;
           }
-          #qr-reader video {
-            position: absolute !important;
-            inset: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: cover !important;
-            display: block !important;
-            margin: 0 auto !important;
-            transform: ${isMirrored ? 'scaleX(-1)' : 'none'} !important;
-            border-radius: 12px !important;
-          }
-          #qr-reader canvas {
-            display: none !important;
-            opacity: 0 !important;
-            position: absolute !important;
-            pointer-events: none !important;
-          }
-          #qr-reader__scan_region {
-            width: 100% !important;
-            height: 100% !important;
-            position: absolute !important;
-            inset: 0 !important;
-            background: transparent !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          #qr-reader__scan_region img,
-          #qr-reader img {
-            display: none !important;
-          }
-          #qr-reader__dashboard,
-          #qr-reader__dashboard_section_csr,
-          #qr-reader__dashboard_section_swaplink,
-          #qr-reader__scan_region span,
-          #qr-reader__header_message,
-          #qr-reader__status_span {
-            display: none !important;
-          }
+
           @keyframes laserScan {
             0% { top: 12%; opacity: 0.8; }
             50% { top: 82%; opacity: 1; }
@@ -513,7 +534,7 @@ export default function TeacherScanPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#ecfdf5', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-full)', border: '1px solid #a7f3d0' }}>
               <Sparkles size={13} color="#059669" />
               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>
-                Global Config DB (0ms)
+                60 FPS Native Scan (Alfamart Speed)
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'white', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
@@ -533,13 +554,55 @@ export default function TeacherScanPage() {
               <div>
                 <div className="card-title" style={{ fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <Camera size={18} color="var(--primary)" />
-                  Kamera Scanner
+                  Kamera Scanner (Hardware 60FPS)
                 </div>
                 <div className="card-subtitle" style={{ fontSize: '0.75rem' }}>
-                  Deteksi otomatis instan tanpa jeda
+                  Sensor pembacaan instan super cepat
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+
+              {/* Action Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {hasTorch && (
+                  <button
+                    type="button"
+                    onClick={toggleTorch}
+                    className="btn btn-secondary btn-sm"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      fontSize: '0.72rem',
+                      padding: '0.3rem 0.55rem',
+                      borderRadius: '8px',
+                      color: isTorchOn ? '#b45309' : '#475569',
+                      backgroundColor: isTorchOn ? '#fef3c7' : '#ffffff',
+                    }}
+                    title="Flashlight / Senter"
+                  >
+                    <Zap size={13} />
+                    <span>{isTorchOn ? 'Senter: On' : 'Senter'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={switchCameraMode}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    fontSize: '0.72rem',
+                    padding: '0.3rem 0.55rem',
+                    borderRadius: '8px',
+                  }}
+                  title="Ganti Kamera Depan / Belakang"
+                >
+                  <SwitchCamera size={13} />
+                  <span>{facingMode === 'environment' ? 'Kamera Belakang' : 'Kamera Depan'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsMirrored((m) => !m)}
@@ -547,19 +610,19 @@ export default function TeacherScanPage() {
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.3rem',
+                    gap: '0.25rem',
                     fontSize: '0.72rem',
-                    padding: '0.3rem 0.6rem',
+                    padding: '0.3rem 0.55rem',
                     borderRadius: '8px',
                     color: isMirrored ? '#0c35a6' : '#475569',
                     backgroundColor: isMirrored ? '#eff6ff' : '#ffffff',
-                    border: isMirrored ? '1px solid #bfdbfe' : '1px solid var(--border-subtle)',
                   }}
-                  title="Klik untuk membalik arah pandangan kamera (Mirror / Normal)"
+                  title="Mirror View"
                 >
                   <FlipHorizontal size={13} />
-                  <span>{isMirrored ? 'Cermin: Aktif' : 'Arah Asli (HP)'}</span>
+                  <span>{isMirrored ? 'Cermin' : 'Normal'}</span>
                 </button>
+
                 {isProcessing && (
                   <span className="badge badge-info" style={{ animation: 'pulse 1s infinite', fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}>
                     Memproses...
@@ -570,7 +633,13 @@ export default function TeacherScanPage() {
 
             {/* Video Viewport */}
             <div className="camera-viewport-box">
-              <div id="qr-reader" />
+              <video
+                ref={videoRef}
+                className="direct-video-stream"
+                autoPlay
+                playsInline
+                muted
+              />
 
               {/* Target Aiming Box with Corner Brackets & Laser Scan */}
               <div
@@ -611,7 +680,7 @@ export default function TeacherScanPage() {
                         ? 'linear-gradient(90deg, transparent 0%, #22c55e 50%, transparent 100%)'
                         : 'linear-gradient(90deg, transparent 0%, #38bdf8 50%, transparent 100%)',
                       boxShadow: isProcessing ? '0 0 12px #22c55e' : '0 0 10px #38bdf8',
-                      animation: 'laserScan 2s infinite ease-in-out',
+                      animation: 'laserScan 1.6s infinite ease-in-out',
                     }}
                   />
 
@@ -642,7 +711,7 @@ export default function TeacherScanPage() {
                 <div>{cameraError}</div>
                 <button
                   type="button"
-                  onClick={() => startScanner()}
+                  onClick={() => startCamera()}
                   className="btn btn-primary btn-sm"
                   style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem' }}
                 >
@@ -825,7 +894,7 @@ export default function TeacherScanPage() {
                   }}
                 >
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }} />
-                  <span>Kamera aktif memantau presensi</span>
+                  <span>Kamera hardware 60FPS aktif memantau</span>
                 </div>
               </div>
             ) : scanResult.success ? (
@@ -969,7 +1038,6 @@ export default function TeacherScanPage() {
                   </div>
                 </div>
 
-
                 {/* Ready note footer */}
                 <div
                   style={{
@@ -985,7 +1053,7 @@ export default function TeacherScanPage() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#15803d', fontWeight: 600 }}>
                     <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }} />
-                    <span>Kamera otomatis siap membaca kartu berikutnya tanpa reload</span>
+                    <span>Kamera otomatis siap membaca kartu berikutnya tanpa jeda</span>
                   </div>
 
                   {scanResult.student?.nis && (
@@ -1073,7 +1141,9 @@ export default function TeacherScanPage() {
                   >
                     Status: Sudah Hadir
                   </span>
-                </div>                {/* Student Identity Card */}
+                </div>
+
+                {/* Student Identity Card */}
                 {scanResult.student && (
                   <div className="student-result-card" style={{ border: '1px solid #fde68a' }}>
                     <div
@@ -1134,12 +1204,12 @@ export default function TeacherScanPage() {
                       </div>
 
                       <div style={{ display: 'flex', gap: '0.65rem', fontSize: '0.78rem', color: '#64748b', marginTop: '0.3rem', flexWrap: 'wrap' }}>
-                        <div>NIS: <strong style={{ color: '#1e293b' }}>{scanResult.student.nis}</strong></div>
-                        {scanResult.student.nisn && <div>NISN: <strong style={{ color: '#1e293b' }}>{scanResult.student.nisn}</strong></div>}
+                        <div>NIS: <strong style={{ color: '#1e293b' }}>{scanResult.student?.nis}</strong></div>
+                        {scanResult.student?.nisn && <div>NISN: <strong style={{ color: '#1e293b' }}>{scanResult.student.nisn}</strong></div>}
                       </div>
 
                       <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        Card ID: {scanResult.student.cardId}
+                        Card ID: {scanResult.student?.cardId}
                       </div>
                     </div>
                   </div>
