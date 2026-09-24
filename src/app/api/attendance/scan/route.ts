@@ -44,28 +44,37 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {}
 
-    // 1. Find QR token or Card by token, cardId, or NIS
-    let qrTokenRecord = await prisma.qrToken.findFirst({
-      where: {
-        OR: [
-          { token: trimmedToken },
-          { card: { cardId: trimmedToken } },
-          { card: { student: { nis: trimmedToken } } },
-        ],
-      },
-      include: {
-        card: {
-          include: {
-            student: {
-              include: {
-                school: true,
-                classRoom: true,
-              },
+    const studentInclude = {
+      card: {
+        include: {
+          student: {
+            include: {
+              school: true,
+              classRoom: true,
             },
           },
         },
       },
+    };
+
+    // 1. Fast-path lookup by unique QR token (indexed B-tree: 1ms)
+    let qrTokenRecord = await prisma.qrToken.findUnique({
+      where: { token: trimmedToken },
+      include: studentInclude,
     });
+
+    // Fallback: If not found by unique token, check cardId or student NIS
+    if (!qrTokenRecord) {
+      qrTokenRecord = await prisma.qrToken.findFirst({
+        where: {
+          OR: [
+            { card: { cardId: trimmedToken } },
+            { card: { student: { nis: trimmedToken } } },
+          ],
+        },
+        include: studentInclude,
+      });
+    }
 
     if (!qrTokenRecord) {
       return NextResponse.json(
@@ -163,7 +172,7 @@ export async function POST(req: NextRequest) {
             schoolName: school.name,
           },
         },
-        { status: 409 }
+        { status: 200 }
       );
     }
 
@@ -172,28 +181,63 @@ export async function POST(req: NextRequest) {
     const isLate = localTimeStr.localeCompare(lateThreshold) > 0;
     const attendanceStatus = isLate ? 'TERLAMBAT' : 'HADIR';
 
+    // 5. Create attendance record with race condition protection (prevents 500 collision errors)
+    let attendance;
+    try {
+      attendance = await prisma.attendance.create({
+        data: {
+          studentId: student.id,
+          schoolId: student.schoolId,
+          date: localDateStr,
+          time: localTimeStr,
+          status: attendanceStatus,
+          scannedBy: user.name,
+          deviceInfo: deviceInfo || 'Web Scanner (Camera)',
+        },
+      });
+    } catch (createError: any) {
+      // If concurrent request created it at the exact same millisecond
+      if (createError?.code === 'P2002') {
+        const fallbackExisting = await prisma.attendance.findUnique({
+          where: {
+            studentId_date: {
+              studentId: student.id,
+              date: localDateStr,
+            },
+          },
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'ALREADY_SCANNED',
+            error: 'Siswa sudah melakukan presensi hari ini.',
+            attendance: fallbackExisting,
+            student: {
+              id: student.id,
+              fullName: student.fullName,
+              nis: student.nis,
+              nisn: student.nisn,
+              gender: student.gender,
+              className: student.classRoom.name,
+              photoUrl: student.photoUrl,
+              cardId: card.cardId,
+              schoolName: school.name,
+            },
+          },
+          { status: 200 }
+        );
+      }
+      throw createError;
+    }
 
-    // 5. Create attendance record
-    const attendance = await prisma.attendance.create({
-      data: {
-        studentId: student.id,
-        schoolId: student.schoolId,
-        date: localDateStr,
-        time: localTimeStr,
-        status: attendanceStatus,
-        scannedBy: user.name,
-        deviceInfo: deviceInfo || 'Web Scanner (Camera)',
-      },
-    });
-
-    // 6. Create audit log
-    await createAuditLog({
+    // 6. Create audit log in background (non-blocking for ultra-fast scan latency)
+    createAuditLog({
       action: 'SCAN_ATTENDANCE',
       actor: user.name,
       details: `Scan QR ${student.fullName} (NIS: ${student.nis}, ${student.classRoom.name}) - Status: ${attendanceStatus} pada ${localTimeStr}`,
       schoolId: student.schoolId,
       ipAddress: req.headers.get('x-forwarded-for') || '127.0.0.1',
-    });
+    }).catch((err) => console.error('Scan audit log background error:', err));
 
     return NextResponse.json({
       success: true,

@@ -59,7 +59,12 @@ export default function TeacherScanPage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [recentScans, setRecentScans] = useState<ScanResult[]>([]);
   const [isMirrored, setIsMirrored] = useState(true);
+
+  // Synchronous locks & token tracking (immune to asynchronous React closures)
   const scannerRef = useRef<unknown>(null);
+  const isProcessingRef = useRef(false);
+  const lastScannedTokenRef = useRef<string>('');
+  const lastScannedTimeRef = useRef<number>(0);
 
   // Fetch current user
   useEffect(() => {
@@ -71,17 +76,47 @@ export default function TeacherScanPage() {
       .catch((e) => console.error(e));
   }, []);
 
-  // Process token verification & attendance recording
-  const processToken = async (tokenStr: string) => {
-    if (!tokenStr || isProcessing) return;
+  // Process token verification & attendance recording with hardware lock & anti-repeat
+  const processToken = async (tokenStr: string, isManual = false) => {
+    const trimmed = (tokenStr || '').trim();
+    if (!trimmed) return;
+
+    const now = Date.now();
+
+    // 1. Thread-safe lock: drop frame immediately if already processing
+    if (isProcessingRef.current) return;
+
+    // 2. Anti-repeat check: ignore exact same token within 10 seconds to prevent repeated scans for the same child
+    if (!isManual && trimmed === lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 10000)) {
+      return;
+    }
+
+    // 3. Minimum cooldown between ANY two scans: 1.2s to prevent jitter
+    if (!isManual && (now - lastScannedTimeRef.current < 1200)) {
+      return;
+    }
+
+    // Immediately acquire lock & record token
+    isProcessingRef.current = true;
+    lastScannedTokenRef.current = trimmed;
+    lastScannedTimeRef.current = now;
     setIsProcessing(true);
+
+    // Pause camera scanning immediately so it stops decoding frames and frees up CPU
+    try {
+      if (scannerRef.current && (scannerRef.current as any).getState?.() === 2) {
+        (scannerRef.current as any).pause(true);
+      }
+    } catch (e) {
+      console.warn('Camera pause error:', e);
+    }
 
     try {
       const res = await fetch('/api/attendance/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: tokenStr,
+          token: trimmed,
           deviceInfo: navigator.userAgent.includes('Mobile') ? 'Kamera HP' : 'Webcam Laptop',
         }),
       });
@@ -105,10 +140,19 @@ export default function TeacherScanPage() {
         error: 'Gagal menghubungi server.',
       });
     } finally {
-      // Auto-ready for next student scan without reload!
+      // Auto-ready for NEXT student scan after 1.6s cooldown
       setTimeout(() => {
+        // Resume scanner if it was paused
+        try {
+          if (scannerRef.current && (scannerRef.current as any).getState?.() === 3) {
+            (scannerRef.current as any).resume();
+          }
+        } catch (e) {
+          console.warn('Camera resume error:', e);
+        }
+        isProcessingRef.current = false;
         setIsProcessing(false);
-      }, 1800);
+      }, 1600);
     }
   };
 
@@ -143,31 +187,51 @@ export default function TeacherScanPage() {
         });
         scannerRef.current = qrScanner;
 
-        // Responsive scan box that preserves camera's native aspect ratio
+        // Responsive scan box focusing decoder precisely on target area for ultra-fast processing
         const qrBoxCalc = (viewfinderWidth: number, viewfinderHeight: number) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const size = Math.floor(minEdge * 0.75);
+          const size = Math.floor(minEdge * 0.72);
+          const clamped = Math.max(180, Math.min(size, 280));
           return {
-            width: Math.max(200, Math.min(size, 320)),
-            height: Math.max(200, Math.min(size, 320)),
+            width: clamped,
+            height: clamped,
           };
         };
 
-        await qrScanner.start(
-          { facingMode: 'environment' },
-          {
-            fps: 20, // 20 FPS for quick QR detection
-            qrbox: qrBoxCalc,
-          },
-          (decodedText: string) => {
-            if (isMounted) {
-              processToken(decodedText);
-            }
-          },
-          () => {
-            // Frame evaluation callback (no code in frame, continue)
+        const scanSuccessCallback = (decodedText: string) => {
+          if (isMounted) {
+            processToken(decodedText);
           }
-        );
+        };
+
+        try {
+          // Attempt optimal 720p constraints for instant QR detection without camera lag
+          await qrScanner.start(
+            {
+              facingMode: 'environment',
+              width: { min: 640, ideal: 1280, max: 1920 },
+              height: { min: 480, ideal: 720, max: 1080 },
+            },
+            {
+              fps: 25, // 25 FPS for immediate real-time QR detection
+              qrbox: qrBoxCalc,
+              aspectRatio: 1.0,
+            },
+            scanSuccessCallback,
+            () => {}
+          );
+        } catch (advErr) {
+          console.warn('Advanced camera constraints failed, falling back to simple:', advErr);
+          await qrScanner.start(
+            { facingMode: 'environment' },
+            {
+              fps: 20,
+              qrbox: qrBoxCalc,
+            },
+            scanSuccessCallback,
+            () => {}
+          );
+        }
 
         if (isMounted) {
           setCameraActive(true);
@@ -210,7 +274,7 @@ export default function TeacherScanPage() {
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (manualToken) {
-      processToken(manualToken);
+      processToken(manualToken, true);
       setManualToken('');
     }
   };
@@ -361,13 +425,13 @@ export default function TeacherScanPage() {
                   }}
                 >
                   {/* Top-Left */}
-                  <div style={{ position: 'absolute', top: 0, left: 0, width: '28px', height: '28px', borderTop: '3px solid #38bdf8', borderLeft: '3px solid #38bdf8', borderTopLeftRadius: '8px' }} />
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: '28px', height: '28px', borderTop: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderLeft: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderTopLeftRadius: '8px', transition: 'border-color 0.2s ease' }} />
                   {/* Top-Right */}
-                  <div style={{ position: 'absolute', top: 0, right: 0, width: '28px', height: '28px', borderTop: '3px solid #38bdf8', borderRight: '3px solid #38bdf8', borderTopRightRadius: '8px' }} />
+                  <div style={{ position: 'absolute', top: 0, right: 0, width: '28px', height: '28px', borderTop: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderRight: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderTopRightRadius: '8px', transition: 'border-color 0.2s ease' }} />
                   {/* Bottom-Left */}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, width: '28px', height: '28px', borderBottom: '3px solid #38bdf8', borderLeft: '3px solid #38bdf8', borderBottomLeftRadius: '8px' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, width: '28px', height: '28px', borderBottom: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderLeft: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderBottomLeftRadius: '8px', transition: 'border-color 0.2s ease' }} />
                   {/* Bottom-Right */}
-                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: '28px', height: '28px', borderBottom: '3px solid #38bdf8', borderRight: '3px solid #38bdf8', borderBottomRightRadius: '8px' }} />
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: '28px', height: '28px', borderBottom: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderRight: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderBottomRightRadius: '8px', transition: 'border-color 0.2s ease' }} />
 
                   {/* Scanning Laser Beam Line */}
                   <div
@@ -376,8 +440,10 @@ export default function TeacherScanPage() {
                       left: '8px',
                       right: '8px',
                       height: '2px',
-                      background: 'linear-gradient(90deg, transparent 0%, #38bdf8 50%, transparent 100%)',
-                      boxShadow: '0 0 10px #38bdf8',
+                      background: isProcessing
+                        ? 'linear-gradient(90deg, transparent 0%, #22c55e 50%, transparent 100%)'
+                        : 'linear-gradient(90deg, transparent 0%, #38bdf8 50%, transparent 100%)',
+                      boxShadow: isProcessing ? '0 0 12px #22c55e' : '0 0 10px #38bdf8',
                       animation: 'laserScan 2s infinite ease-in-out',
                     }}
                   />
@@ -388,16 +454,17 @@ export default function TeacherScanPage() {
                       bottom: '-28px',
                       left: '50%',
                       transform: 'translateX(-50%)',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      color: '#38bdf8',
+                      background: isProcessing ? 'rgba(22, 101, 52, 0.92)' : 'rgba(15, 23, 42, 0.85)',
+                      color: isProcessing ? '#86efac' : '#38bdf8',
                       padding: '0.2rem 0.65rem',
                       borderRadius: '4px',
                       fontSize: '0.72rem',
                       fontWeight: 600,
                       whiteSpace: 'nowrap',
+                      transition: 'all 0.2s ease',
                     }}
                   >
-                    Arahkan QR ke kotak ini
+                    {isProcessing ? '✓ Terdeteksi! Memproses...' : 'Arahkan QR ke kotak ini'}
                   </div>
                 </div>
               </div>
@@ -503,7 +570,11 @@ export default function TeacherScanPage() {
               {scanResult && (
                 <button
                   type="button"
-                  onClick={() => setScanResult(null)}
+                  onClick={() => {
+                    setScanResult(null);
+                    lastScannedTokenRef.current = '';
+                    lastScannedTimeRef.current = 0;
+                  }}
                   title="Bersihkan Tampilan"
                   style={{
                     display: 'inline-flex',
