@@ -378,13 +378,15 @@ export default function TeacherScanPage() {
             border-radius: 14px;
             overflow: hidden;
             background-color: #0b0f19;
-            height: clamp(260px, 46vh, 360px);
+            height: clamp(240px, 42vh, 320px);
             display: flex;
             align-items: center;
             justify-content: center;
             border: 2px solid #1e293b;
             box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
             width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
           }
 
           #qr-reader {
@@ -392,25 +394,41 @@ export default function TeacherScanPage() {
             height: 100% !important;
             border: none !important;
             background: transparent !important;
-            position: relative !important;
+            position: absolute !important;
+            inset: 0 !important;
             overflow: hidden !important;
             padding: 0 !important;
+            margin: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
           }
-          #qr-reader video {
+          #qr-reader video,
+          #qr-reader canvas {
             width: 100% !important;
             height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
             object-fit: cover !important;
             border-radius: 12px !important;
             display: block !important;
+            margin: 0 auto !important;
             transform: ${isMirrored ? 'scaleX(-1)' : 'none'} !important;
           }
           #qr-reader__scan_region {
-            background: transparent !important;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
             width: 100% !important;
             height: 100% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            background: transparent !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #qr-reader__scan_region img,
+          #qr-reader img {
+            display: none !important;
           }
           #qr-reader__dashboard,
           #qr-reader__dashboard_section_csr,
@@ -502,30 +520,31 @@ export default function TeacherScanPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  zIndex: 10,
                 }}
               >
                 <div
                   style={{
-                    width: 'min(200px, 58vw)',
-                    height: 'min(200px, 58vw)',
+                    width: 'min(170px, 48vw)',
+                    height: 'min(170px, 48vw)',
                     position: 'relative',
                   }}
                 >
                   {/* Top-Left */}
-                  <div style={{ position: 'absolute', top: 0, left: 0, width: '24px', height: '24px', borderTop: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderLeft: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderTopLeftRadius: '8px', transition: 'border-color 0.2s ease' }} />
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '20px', borderTop: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderLeft: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderTopLeftRadius: '8px', transition: 'border-color 0.2s ease' }} />
                   {/* Top-Right */}
-                  <div style={{ position: 'absolute', top: 0, right: 0, width: '24px', height: '24px', borderTop: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderRight: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderTopRightRadius: '8px', transition: 'border-color 0.2s ease' }} />
+                  <div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '20px', borderTop: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderRight: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderTopRightRadius: '8px', transition: 'border-color 0.2s ease' }} />
                   {/* Bottom-Left */}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, width: '24px', height: '24px', borderBottom: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderLeft: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderBottomLeftRadius: '8px', transition: 'border-color 0.2s ease' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, width: '20px', height: '20px', borderBottom: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderLeft: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderBottomLeftRadius: '8px', transition: 'border-color 0.2s ease' }} />
                   {/* Bottom-Right */}
-                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: '24px', height: '24px', borderBottom: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderRight: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderBottomRightRadius: '8px', transition: 'border-color 0.2s ease' }} />
+                  <div style={{ position: 'absolute', bottom: 0, right: 0, width: '20px', height: '20px', borderBottom: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderRight: `3px solid ${isProcessing ? '#22c55e' : '#38bdf8'}`, borderBottomRightRadius: '8px', transition: 'border-color 0.2s ease' }} />
 
                   {/* Scanning Laser Beam Line */}
                   <div
                     style={{
                       position: 'absolute',
-                      left: '6px',
-                      right: '6px',
+                      left: '4px',
+                      right: '4px',
                       height: '2px',
                       background: isProcessing
                         ? 'linear-gradient(90deg, transparent 0%, #22c55e 50%, transparent 100%)'
@@ -538,20 +557,20 @@ export default function TeacherScanPage() {
                   <div
                     style={{
                       position: 'absolute',
-                      bottom: '-26px',
+                      bottom: '-24px',
                       left: '50%',
                       transform: 'translateX(-50%)',
                       background: isProcessing ? 'rgba(22, 101, 52, 0.92)' : 'rgba(15, 23, 42, 0.85)',
                       color: isProcessing ? '#86efac' : '#38bdf8',
-                      padding: '0.15rem 0.55rem',
+                      padding: '0.15rem 0.5rem',
                       borderRadius: '4px',
-                      fontSize: '0.7rem',
+                      fontSize: '0.68rem',
                       fontWeight: 600,
                       whiteSpace: 'nowrap',
                       transition: 'all 0.2s ease',
                     }}
                   >
-                    {isProcessing ? '✓ Terdeteksi! Memproses...' : 'Arahkan QR ke kotak ini'}
+                    {isProcessing ? '✓ Terdeteksi! Memproses...' : 'Arahkan QR ke sini'}
                   </div>
                 </div>
               </div>
