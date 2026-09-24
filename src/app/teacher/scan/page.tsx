@@ -451,28 +451,29 @@ export default function TeacherScanPage() {
             overflow: hidden !important;
             padding: 0 !important;
             margin: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
           }
-          #qr-reader video,
-          #qr-reader canvas {
+          #qr-reader video {
+            position: absolute !important;
+            inset: 0 !important;
             width: 100% !important;
             height: 100% !important;
-            max-width: 100% !important;
-            max-height: 100% !important;
             object-fit: cover !important;
-            border-radius: 12px !important;
             display: block !important;
             margin: 0 auto !important;
             transform: ${isMirrored ? 'scaleX(-1)' : 'none'} !important;
+            border-radius: 12px !important;
+          }
+          #qr-reader canvas {
+            display: none !important;
+            opacity: 0 !important;
+            position: absolute !important;
+            pointer-events: none !important;
           }
           #qr-reader__scan_region {
             width: 100% !important;
             height: 100% !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
+            position: absolute !important;
+            inset: 0 !important;
             background: transparent !important;
             overflow: hidden !important;
             margin: 0 !important;
