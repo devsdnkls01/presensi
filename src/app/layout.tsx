@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 export const metadata: Metadata = {
   title: 'SmartSiswa - Sistem Presensi Siswa SD/MI Berbasis QR Code',
@@ -44,6 +46,8 @@ export default function RootLayout({
     <html lang="id">
       <body>
         <NotificationProvider>{children}</NotificationProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
