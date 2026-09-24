@@ -81,10 +81,13 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Login error:', error);
     return NextResponse.json(
-      { error: 'Terjadi kesalahan pada server.' },
+      { 
+        error: error?.message || 'Terjadi kesalahan pada server.',
+        code: error?.code || null,
+      },
       { status: 500 }
     );
   }
