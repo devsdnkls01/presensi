@@ -63,6 +63,10 @@ export default function TeacherScanPage() {
   const [hasTorch, setHasTorch] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
 
+  const [cachedStudentsCount, setCachedStudentsCount] = useState<number>(0);
+  const [isSyncingCache, setIsSyncingCache] = useState<boolean>(false);
+  const [cacheSyncMessage, setCacheSyncMessage] = useState<string | null>(null);
+
   // Direct Hardware Video & Frame References
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -75,34 +79,65 @@ export default function TeacherScanPage() {
   const lastScannedTokenRef = useRef<string>('');
   const lastScannedTimeRef = useRef<number>(0);
   const studentCacheRef = useRef<Map<string, any>>(new Map());
+  const scannedTodaySetRef = useRef<Set<string>>(new Set());
 
-  // Load client cached data after hydration
+  // Function to build and set in-memory student lookup map
+  const populateStudentMap = (cards: any[]) => {
+    if (!Array.isArray(cards)) return;
+    const map = new Map();
+    cards.forEach((c: any) => {
+      if (c.qrToken?.token) map.set(c.qrToken.token, c.student);
+      if (c.cardId) map.set(c.cardId, c.student);
+      if (c.student?.nis) map.set(c.student.nis, c.student);
+      if (c.student?.id) map.set(c.student.id, c.student);
+    });
+    studentCacheRef.current = map;
+    setCachedStudentsCount(cards.length);
+  };
+
+  // Download all active cards from server and store persistently in device localStorage
+  const downloadAndSaveAllCards = useCallback(async (isManual = false) => {
+    try {
+      setIsSyncingCache(true);
+      const res = await fetch('/api/school/cards?status=AKTIF');
+      const data = await res.json();
+      if (data.cards && Array.isArray(data.cards)) {
+        populateStudentMap(data.cards);
+        try {
+          localStorage.setItem('smartsiswa_cached_cards', JSON.stringify(data.cards));
+          localStorage.setItem('smartsiswa_cache_time', new Date().toISOString());
+        } catch (e) {}
+        if (isManual) {
+          setCacheSyncMessage(`✓ Berhasil mendownload ${data.cards.length} data siswa ke perangkat!`);
+          setTimeout(() => setCacheSyncMessage(null), 3000);
+        }
+      }
+    } catch (err) {
+      console.warn('Cache download error:', err);
+    } finally {
+      setIsSyncingCache(false);
+    }
+  }, []);
+
+  // Load client cached data immediately from device storage on mount (0ms instant startup)
   useEffect(() => {
     try {
       const cached = localStorage.getItem('smartsiswa_user');
       if (cached) setUser(JSON.parse(cached));
       const cachedScans = localStorage.getItem('smartsiswa_recent_scans');
       if (cachedScans) setRecentScans(JSON.parse(cachedScans));
-    } catch (e) {}
-  }, []);
 
-  // Pre-load student card cache for 0ms instant scan recognition
-  useEffect(() => {
-    fetch('/api/school/cards?status=AKTIF')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.cards && Array.isArray(data.cards)) {
-          const map = new Map();
-          data.cards.forEach((c: any) => {
-            if (c.qrToken?.token) map.set(c.qrToken.token, c.student);
-            if (c.cardId) map.set(c.cardId, c.student);
-            if (c.student?.nis) map.set(c.student.nis, c.student);
-          });
-          studentCacheRef.current = map;
-        }
-      })
-      .catch(() => {});
-  }, [user?.schoolId]);
+      // Load persistent offline cards from device storage immediately
+      const savedCardsRaw = localStorage.getItem('smartsiswa_cached_cards');
+      if (savedCardsRaw) {
+        const savedCards = JSON.parse(savedCardsRaw);
+        populateStudentMap(savedCards);
+      }
+    } catch (e) {}
+
+    // Download/Refresh latest data in background
+    downloadAndSaveAllCards(false);
+  }, [downloadAndSaveAllCards]);
 
   // Fetch current user & keep local cache fresh
   useEffect(() => {
@@ -119,8 +154,6 @@ export default function TeacherScanPage() {
       .catch((e) => console.error(e));
   }, []);
 
-  // Track students scanned today in local memory to prevent double-scan in 0ms
-  const scannedTodaySetRef = useRef<Set<string>>(new Set());
 
   // Helper to format WIB time
   const getFormattedWIB = () => {
@@ -582,6 +615,30 @@ export default function TeacherScanPage() {
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {/* Device Offline Storage Cache Badge & Refresh Button */}
+            <button
+              type="button"
+              onClick={() => downloadAndSaveAllCards(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                color: '#15803d',
+                padding: '0.3rem 0.65rem',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+              title="Klik untuk mendownload & memperbarui semua data siswa ke cache perangkat"
+            >
+              <RotateCcw size={12} style={{ animation: isSyncingCache ? 'spin 1s linear infinite' : 'none' }} />
+              <span>{isSyncingCache ? 'Mengunduh Data...' : `💾 Cache HP: ${cachedStudentsCount} Siswa`}</span>
+            </button>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#ecfdf5', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-full)', border: '1px solid #a7f3d0' }}>
               <Sparkles size={13} color="#059669" />
               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>
@@ -596,6 +653,29 @@ export default function TeacherScanPage() {
             </div>
           </div>
         </div>
+
+        {/* Cache Sync Feedback Alert */}
+        {cacheSyncMessage && (
+          <div
+            style={{
+              marginBottom: '1rem',
+              padding: '0.6rem 1rem',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '0.8rem',
+              color: '#065f46',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              animation: 'fadeIn 0.2s ease',
+            }}
+          >
+            <Check size={16} color="#059669" />
+            <span>{cacheSyncMessage}</span>
+          </div>
+        )}
 
         {/* Main Responsive Grid: Camera & Scan Result */}
         <div className="scan-grid-container">
