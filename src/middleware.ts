@@ -7,7 +7,7 @@ export function middleware(req: NextRequest) {
   // Allow public assets and Next.js internals
   if (
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/auth/login') ||
+    pathname.startsWith('/api/auth') ||
     pathname === '/favicon.ico' ||
     pathname === '/icon.png'
   ) {
