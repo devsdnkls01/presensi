@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, memo } from 'react';
 import QRCode from 'qrcode';
+import { optimizeCloudinaryUrl } from '@/lib/cloudinary';
 
 const qrDataUrlCache = new Map<string, string>();
 
@@ -727,8 +728,10 @@ function StudentCardPreviewComponent({
   isPrint = false,
   watermark = false,
 }: StudentCardPreviewProps) {
-  const actualLogo = logoUrl || CLOUDINARY_DEFAULT_LOGO;
-  const actualPhoto = photoUrl || CLOUDINARY_DEFAULT_AVATAR;
+  const photoWidth = isPrint ? 600 : 300;
+  const logoWidth = isPrint ? 400 : 200;
+  const actualLogo = optimizeCloudinaryUrl(logoUrl || CLOUDINARY_DEFAULT_LOGO, logoWidth);
+  const actualPhoto = optimizeCloudinaryUrl(photoUrl || CLOUDINARY_DEFAULT_AVATAR, photoWidth);
   const tokenPayload = qrToken || 'STU-B7A66EDE';
   const [qrDataUrl, setQrDataUrl] = useState<string>(() => qrDataUrlCache.get(tokenPayload) || '');
   const frontId = idPrefix ? `${idPrefix}-front` : `card-${cardId}-front`;

@@ -9,6 +9,21 @@ if (process.env.CLOUDINARY_URL) {
 }
 
 /**
+ * Optimizes Cloudinary URL with auto-format (WebP/AVIF), auto-quality, and resized dimensions.
+ * Reduces bandwidth transfer by up to 50x (e.g. 1.5MB logo -> 25KB WebP).
+ */
+export function optimizeCloudinaryUrl(url: string | null | undefined, width: number = 300): string {
+  if (!url) return '';
+  if (!url.includes('res.cloudinary.com') || !url.includes('/upload/')) {
+    return url;
+  }
+  if (url.includes('/upload/f_auto') || url.includes('/upload/c_')) {
+    return url;
+  }
+  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width}/`);
+}
+
+/**
  * Upload an image (base64 data URL, remote URL, or local path) to Cloudinary.
  * If photo is updated with the same publicId, it automatically overwrites and invalidates CDN cache.
  *

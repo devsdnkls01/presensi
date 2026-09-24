@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import AppLayout from '@/components/AppLayout';
 import { SessionUser } from '@/lib/auth';
 import { useNotification } from '@/context/NotificationContext';
+import { optimizeCloudinaryUrl } from '@/lib/cloudinary';
 import {
   Users,
   Plus,
@@ -436,8 +437,9 @@ export default function SchoolStudentsPage() {
                           {st.photoUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={st.photoUrl}
+                              src={optimizeCloudinaryUrl(st.photoUrl, 120)}
                               alt={st.fullName}
+                              loading="lazy"
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
                           ) : (
@@ -845,7 +847,7 @@ export default function SchoolStudentsPage() {
                 >
                   {editFormData.photoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={editFormData.photoUrl} alt="Preview Foto Siswa" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={optimizeCloudinaryUrl(editFormData.photoUrl, 200)} alt="Preview Foto Siswa" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <ImageIcon size={30} color="#94a3b8" />
                   )}

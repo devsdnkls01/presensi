@@ -38,7 +38,9 @@ export async function GET(req: NextRequest) {
       },
       include: {
         classRoom: true,
-        school: true,
+        school: {
+          select: { id: true, name: true, logo: true },
+        },
         cards: {
           orderBy: { createdAt: 'desc' },
           take: 1,
