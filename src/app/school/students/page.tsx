@@ -53,7 +53,7 @@ export default function SchoolStudentsPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
 
@@ -91,6 +91,25 @@ export default function SchoolStudentsPage() {
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Instant local cache hydration (0ms)
+  useEffect(() => {
+    try {
+      const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
+      if (cachedClasses) {
+        const parsed = JSON.parse(cachedClasses);
+        if (Array.isArray(parsed) && parsed.length > 0) setClasses(parsed);
+      }
+      const cachedStudents = localStorage.getItem('smartsiswa_students_cache_all');
+      if (cachedStudents) {
+        const parsed = JSON.parse(cachedStudents);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setStudents(parsed);
+          setLoading(false);
+        }
+      }
+    } catch (e) {}
+  }, []);
+
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => res.json())
@@ -100,8 +119,25 @@ export default function SchoolStudentsPage() {
   }, []);
 
   const loadData = async () => {
+    const cacheKey = `smartsiswa_students_cache_${selectedClass || 'all'}`;
+    if (!search) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setStudents(parsed);
+            setLoading(false);
+          }
+        } else if (students.length === 0) {
+          setLoading(true);
+        }
+      } catch (e) {
+        if (students.length === 0) setLoading(true);
+      }
+    }
+
     try {
-      setLoading(true);
       const queryParams = new URLSearchParams();
       if (search) queryParams.append('search', search);
       if (selectedClass) queryParams.append('classId', selectedClass);
@@ -114,8 +150,20 @@ export default function SchoolStudentsPage() {
       const stuData = await resStu.json();
       const claData = await resCla.json();
 
-      if (stuData.students) setStudents(stuData.students);
-      if (claData.classes) setClasses(claData.classes);
+      if (stuData.students) {
+        setStudents(stuData.students);
+        if (!search) {
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(stuData.students));
+          } catch (e) {}
+        }
+      }
+      if (claData.classes) {
+        setClasses(claData.classes);
+        try {
+          localStorage.setItem('smartsiswa_classes_cache', JSON.stringify(claData.classes));
+        } catch (e) {}
+      }
     } catch (e) {
       console.error(e);
     } finally {

@@ -19,6 +19,9 @@ import {
   Sparkles,
   ArrowRight,
   TrendingUp,
+  Database,
+  RotateCcw,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -57,7 +60,9 @@ export default function TeacherAttendanceRecapPage() {
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // "YYYY-MM"
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<string>('Cache Aktif (0ms)');
 
   // View mode: 'matrix' | 'cards' | 'logs'
   const [viewMode, setViewMode] = useState<'matrix' | 'cards'>('matrix');
@@ -74,6 +79,32 @@ export default function TeacherAttendanceRecapPage() {
     matrix: MatrixItem[];
   } | null>(null);
 
+  // Read initial cache from localStorage immediately (0ms instant startup)
+  useEffect(() => {
+    try {
+      const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
+      if (cachedClasses) {
+        const parsed = JSON.parse(cachedClasses);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setClasses(parsed);
+          if (!selectedClassId) setSelectedClassId(parsed[0].id);
+        }
+      }
+
+      const initialKey = `smartsiswa_rekap_${selectedMonth}_${selectedClassId || 'all'}`;
+      const cachedRecap = localStorage.getItem(initialKey);
+      if (cachedRecap) {
+        const parsedRecap = JSON.parse(cachedRecap);
+        if (parsedRecap && parsedRecap.matrix) {
+          setRecapData(parsedRecap);
+          setLoading(false);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to read local cache:', e);
+    }
+  }, []);
+
   // Fetch current user
   useEffect(() => {
     fetch('/api/auth/me')
@@ -83,25 +114,86 @@ export default function TeacherAttendanceRecapPage() {
       });
   }, []);
 
-  // Fetch classes
+  // Pre-download all classes and their recaps into device cache in the background
+  const predownloadAllClassesData = async (classList: ClassItem[], month: string) => {
+    try {
+      // 1. Preload 'all'
+      fetch(`/api/attendance/recap?month=${month}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.matrix) {
+            localStorage.setItem(`smartsiswa_rekap_${month}_all`, JSON.stringify(data));
+          }
+        })
+        .catch(() => {});
+
+      // 2. Preload each individual class
+      for (const cls of classList) {
+        fetch(`/api/attendance/recap?classId=${cls.id}&month=${month}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data && data.matrix) {
+              localStorage.setItem(`smartsiswa_rekap_${month}_${cls.id}`, JSON.stringify(data));
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (e) {
+      console.error('Background pre-cache error:', e);
+    }
+  };
+
+  // Fetch classes & update cache
   useEffect(() => {
     if (user) {
       fetch('/api/school/classes')
         .then((res) => res.json())
         .then((data) => {
-          if (data.classes) {
+          if (data.classes && Array.isArray(data.classes)) {
             setClasses(data.classes);
+            try {
+              localStorage.setItem('smartsiswa_classes_cache', JSON.stringify(data.classes));
+            } catch (e) {}
+
             if (data.classes.length > 0 && !selectedClassId) {
               setSelectedClassId(data.classes[0].id);
             }
+
+            // Trigger silent background pre-cache of all classes for this month
+            predownloadAllClassesData(data.classes, selectedMonth);
           }
-        });
+        })
+        .catch((e) => console.error('Error fetching classes:', e));
     }
   }, [user]);
 
-  // Fetch recap data
-  const loadRecap = async () => {
-    setLoading(true);
+  // Fetch recap data (Cache-First + Stale While Revalidate)
+  const loadRecap = async (forceRefresh = false) => {
+    const cacheKey = `smartsiswa_rekap_${selectedMonth}_${selectedClassId || 'all'}`;
+
+    // 1. Try reading from device cache immediately (0ms)
+    if (!forceRefresh && !search) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.matrix) {
+            setRecapData(parsed);
+            setLoading(false);
+          }
+        } else if (!recapData) {
+          setLoading(true);
+        }
+      } catch (e) {
+        if (!recapData) setLoading(true);
+      }
+    } else if (forceRefresh && !recapData) {
+      setLoading(true);
+    }
+
+    // 2. Silently fetch from network to update and refresh cache
+    setIsSyncing(true);
+    setCacheStatus('Sinkronisasi Latar...');
     try {
       const params = new URLSearchParams();
       if (selectedClassId) params.append('classId', selectedClassId);
@@ -110,21 +202,37 @@ export default function TeacherAttendanceRecapPage() {
 
       const res = await fetch(`/api/attendance/recap?${params.toString()}`);
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data) {
         setRecapData(data);
+        if (!search) {
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(data));
+          } catch (e) {}
+        }
+        setCacheStatus(`Cache Siap (0ms) - ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`);
       }
     } catch (e) {
       console.error('Failed to load recap:', e);
+      setCacheStatus('Offline (Data dari Cache)');
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
   };
 
+  // Trigger loadRecap whenever filters change
   useEffect(() => {
     if (user) {
       loadRecap();
     }
   }, [user, selectedClassId, selectedMonth, search]);
+
+  const handleManualCacheRefresh = () => {
+    loadRecap(true);
+    if (classes.length > 0) {
+      predownloadAllClassesData(classes, selectedMonth);
+    }
+  };
 
   const handleExportCSV = () => {
     if (!recapData || !recapData.matrix || recapData.matrix.length === 0) return;
@@ -211,7 +319,17 @@ export default function TeacherAttendanceRecapPage() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handleManualCacheRefresh}
+            className="btn btn-secondary"
+            title="Download & perbarui seluruh data rekap ke cache memori lokal"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <RotateCcw size={15} className={isSyncing ? 'animate-spin' : ''} />
+            <span>{isSyncing ? 'Menyinkronkan...' : 'Perbarui Cache'}</span>
+          </button>
           <button onClick={handleExportCSV} className="btn btn-secondary">
             <Download size={16} />
             <span>Ekspor Excel/CSV</span>
@@ -220,6 +338,43 @@ export default function TeacherAttendanceRecapPage() {
             <Printer size={16} />
             <span>Cetak Rekap Resmi</span>
           </button>
+        </div>
+      </div>
+
+      {/* Device Cache Status Bar */}
+      <div
+        className="no-print"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+          padding: '0.6rem 1rem',
+          backgroundColor: '#f8fafc',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: '1rem',
+          fontSize: '0.8rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#1e293b' }}>
+          <Zap size={16} color="#16a34a" />
+          <span>
+            <strong>Cache Lokal:</strong> Seluruh data diunduh di memori perangkat (Buka & Ganti Kelas Instan 0ms)
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-secondary)' }}>
+          <span
+            style={{
+              display: 'inline-block',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: isSyncing ? '#f59e0b' : '#22c55e',
+            }}
+          />
+          <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{cacheStatus}</span>
         </div>
       </div>
 
@@ -405,10 +560,13 @@ export default function TeacherAttendanceRecapPage() {
       </div>
 
       {/* Main Content Area */}
-      {loading ? (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>Memuat Rekap Presensi...</div>
-          <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Menghitung matriks kehadiran siswa.</p>
+      {loading && !recapData ? (
+        <div className="card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600, color: 'var(--primary)' }}>
+            <RotateCcw size={18} className="animate-spin" />
+            <span>Menyiapkan Cache Presensi Lokal...</span>
+          </div>
+          <p style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Mengunduh data matriks kehadiran ke memori perangkat (0ms).</p>
         </div>
       ) : !recapData || recapData.matrix.length === 0 ? (
         <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>

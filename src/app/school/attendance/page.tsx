@@ -42,7 +42,7 @@ export default function SchoolAttendanceReportPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [attendances, setAttendances] = useState<AttendanceRecord[]>([]);
   const [classes, setClasses] = useState<ClassItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Filters
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -55,6 +55,26 @@ export default function SchoolAttendanceReportPage() {
   const [resetMode, setResetMode] = useState<'filtered' | 'all'>('filtered');
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Instant local cache hydration (0ms)
+  useEffect(() => {
+    try {
+      const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
+      if (cachedClasses) {
+        const parsed = JSON.parse(cachedClasses);
+        if (Array.isArray(parsed) && parsed.length > 0) setClasses(parsed);
+      }
+      const initialDate = new Date().toISOString().slice(0, 10);
+      const cachedAtt = localStorage.getItem(`smartsiswa_attendance_${initialDate}`);
+      if (cachedAtt) {
+        const parsed = JSON.parse(cachedAtt);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAttendances(parsed);
+          setLoading(false);
+        }
+      }
+    } catch (e) {}
+  }, []);
+
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => res.json())
@@ -64,8 +84,26 @@ export default function SchoolAttendanceReportPage() {
   }, []);
 
   const loadData = async () => {
+    const cacheKey = `smartsiswa_attendance_${date || 'all'}`;
+    // Read cache first
+    if (!classId && !status && !search) {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setAttendances(parsed);
+            setLoading(false);
+          }
+        } else if (attendances.length === 0) {
+          setLoading(true);
+        }
+      } catch (e) {
+        if (attendances.length === 0) setLoading(true);
+      }
+    }
+
     try {
-      setLoading(true);
       const params = new URLSearchParams();
       if (date) params.append('date', date);
       if (classId) params.append('classId', classId);
@@ -80,8 +118,20 @@ export default function SchoolAttendanceReportPage() {
       const dataAtt = await resAtt.json();
       const dataCla = await resCla.json();
 
-      if (dataAtt.attendances) setAttendances(dataAtt.attendances);
-      if (dataCla.classes) setClasses(dataCla.classes);
+      if (dataAtt.attendances) {
+        setAttendances(dataAtt.attendances);
+        if (!classId && !status && !search) {
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(dataAtt.attendances));
+          } catch (e) {}
+        }
+      }
+      if (dataCla.classes) {
+        setClasses(dataCla.classes);
+        try {
+          localStorage.setItem('smartsiswa_classes_cache', JSON.stringify(dataCla.classes));
+        } catch (e) {}
+      }
     } catch (e) {
       console.error(e);
     } finally {
