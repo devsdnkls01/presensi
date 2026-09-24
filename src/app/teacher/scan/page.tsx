@@ -365,11 +365,63 @@ export default function TeacherScanPage() {
             padding: 1.25rem;
             display: flex;
             flex-direction: column;
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
           }
           @media (max-width: 640px) {
             .scan-card-responsive {
-              padding: 0.85rem !important;
+              padding: 0.75rem !important;
               border-radius: 14px !important;
+            }
+          }
+
+          .student-result-card {
+            background-color: #ffffff;
+            border-radius: 14px;
+            padding: 1.15rem;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.85rem;
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
+          }
+          .student-avatar-box {
+            width: 74px;
+            height: 96px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #f1f5f9;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .student-name-text {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #0f172a;
+            text-transform: uppercase;
+            letter-spacing: -0.01em;
+            word-break: break-word;
+            line-height: 1.25;
+          }
+          @media (max-width: 640px) {
+            .student-result-card {
+              padding: 0.75rem !important;
+              gap: 0.75rem !important;
+              border-radius: 12px !important;
+            }
+            .student-avatar-box {
+              width: 60px !important;
+              height: 78px !important;
+            }
+            .student-name-text {
+              font-size: 1rem !important;
             }
           }
 
@@ -378,7 +430,7 @@ export default function TeacherScanPage() {
             border-radius: 14px;
             overflow: hidden;
             background-color: #0b0f19;
-            height: clamp(240px, 42vh, 320px);
+            height: clamp(220px, 38vh, 320px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -456,11 +508,19 @@ export default function TeacherScanPage() {
               Arahkan QR Code kartu siswa ke kamera untuk presensi otomatis.
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'white', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
-            <Volume2 size={16} color="#059669" />
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#334155' }}>
-              Suara: <strong>Aktif</strong>
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#ecfdf5', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-full)', border: '1px solid #a7f3d0' }}>
+              <Sparkles size={13} color="#059669" />
+              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857' }}>
+                Global Config DB (0ms)
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'white', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-full)', border: '1px solid var(--border-subtle)', boxShadow: 'var(--shadow-sm)' }}>
+              <Volume2 size={14} color="#059669" />
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#334155' }}>
+                Suara: <strong>Aktif</strong>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -838,32 +898,12 @@ export default function TeacherScanPage() {
                 </div>
 
                 {/* Student Identity Card */}
-                <div
-                  style={{
-                    backgroundColor: '#ffffff',
-                    borderRadius: '14px',
-                    padding: '1.25rem',
-                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)',
-                    border: '1px solid #e2e8f0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '1.25rem',
-                    marginBottom: '1rem',
-                  }}
-                >
+                <div className="student-result-card">
                   <div
+                    className="student-avatar-box"
                     style={{
-                      width: '74px',
-                      height: '96px',
-                      borderRadius: '10px',
-                      overflow: 'hidden',
-                      backgroundColor: '#f1f5f9',
                       border: '2px solid #22c55e',
                       boxShadow: '0 4px 10px rgba(34, 197, 94, 0.2)',
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
                     }}
                   >
                     {scanResult.student?.photoUrl ? (
@@ -874,12 +914,12 @@ export default function TeacherScanPage() {
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     ) : (
-                      <User size={34} color="#94a3b8" />
+                      <User size={30} color="#94a3b8" />
                     )}
                   </div>
 
-                  <div style={{ flex: 1, minWidth: '180px' }}>
-                    <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                       <span
                         style={{
                           fontSize: '0.7rem',
@@ -902,6 +942,10 @@ export default function TeacherScanPage() {
                             padding: '0.15rem 0.5rem',
                             borderRadius: '4px',
                             border: '1px solid #e2e8f0',
+                            maxWidth: '160px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {scanResult.student.schoolName}
@@ -909,20 +953,21 @@ export default function TeacherScanPage() {
                       )}
                     </div>
 
-                    <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.01em' }}>
+                    <div className="student-name-text">
                       {scanResult.student?.fullName}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', color: '#64748b', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '0.65rem', fontSize: '0.78rem', color: '#64748b', marginTop: '0.3rem', flexWrap: 'wrap' }}>
                       <div>NIS: <strong style={{ color: '#1e293b' }}>{scanResult.student?.nis}</strong></div>
                       {scanResult.student?.nisn && <div>NISN: <strong style={{ color: '#1e293b' }}>{scanResult.student.nisn}</strong></div>}
                     </div>
 
-                    <div style={{ fontSize: '0.725rem', color: '#94a3b8', marginTop: '0.25rem', fontFamily: 'monospace' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       Card ID: {scanResult.student?.cardId}
                     </div>
                   </div>
                 </div>
+
 
                 {/* Ready note footer */}
                 <div
@@ -1027,36 +1072,14 @@ export default function TeacherScanPage() {
                   >
                     Status: Sudah Hadir
                   </span>
-                </div>
-
-                {/* Student Identity Card */}
+                </div>                {/* Student Identity Card */}
                 {scanResult.student && (
-                  <div
-                    style={{
-                      backgroundColor: '#ffffff',
-                      borderRadius: '14px',
-                      padding: '1.25rem',
-                      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)',
-                      border: '1px solid #fde68a',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1.25rem',
-                      marginBottom: '1rem',
-                    }}
-                  >
+                  <div className="student-result-card" style={{ border: '1px solid #fde68a' }}>
                     <div
+                      className="student-avatar-box"
                       style={{
-                        width: '74px',
-                        height: '96px',
-                        borderRadius: '10px',
-                        overflow: 'hidden',
-                        backgroundColor: '#f1f5f9',
                         border: '2px solid #f59e0b',
                         boxShadow: '0 4px 10px rgba(245, 158, 11, 0.2)',
-                        flexShrink: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
                       }}
                     >
                       {scanResult.student.photoUrl ? (
@@ -1067,12 +1090,12 @@ export default function TeacherScanPage() {
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         />
                       ) : (
-                        <User size={34} color="#94a3b8" />
+                        <User size={30} color="#94a3b8" />
                       )}
                     </div>
 
-                    <div style={{ flex: 1, minWidth: '180px' }}>
-                      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                         <span
                           style={{
                             fontSize: '0.7rem',
@@ -1094,6 +1117,10 @@ export default function TeacherScanPage() {
                               color: '#92400e',
                               padding: '0.15rem 0.5rem',
                               borderRadius: '4px',
+                              maxWidth: '160px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
                             }}
                           >
                             {scanResult.student.schoolName}
@@ -1101,16 +1128,16 @@ export default function TeacherScanPage() {
                         )}
                       </div>
 
-                      <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.01em' }}>
+                      <div className="student-name-text">
                         {scanResult.student.fullName}
                       </div>
 
-                      <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', color: '#64748b', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '0.65rem', fontSize: '0.78rem', color: '#64748b', marginTop: '0.3rem', flexWrap: 'wrap' }}>
                         <div>NIS: <strong style={{ color: '#1e293b' }}>{scanResult.student.nis}</strong></div>
                         {scanResult.student.nisn && <div>NISN: <strong style={{ color: '#1e293b' }}>{scanResult.student.nisn}</strong></div>}
                       </div>
 
-                      <div style={{ fontSize: '0.725rem', color: '#94a3b8', marginTop: '0.25rem', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '0.2rem', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         Card ID: {scanResult.student.cardId}
                       </div>
                     </div>

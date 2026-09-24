@@ -4,11 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createAuditLog } from '@/lib/audit';
 import { getWIBDate, getWIBTime } from '@/lib/dateUtils';
+import { migrateGlobalScansToSupabase, getTodayScansFromGlobalConfig } from '@/lib/globalConfig';
 
 /**
- * 24-Hour Automated Synchronization & Persistence to Supabase
- * Runs automatically every 24 hours (or triggered manually) to reconcile
- * and ensure 100% of attendance, card tokens, and student states are persisted in Supabase.
+ * 24-Hour Automated Migration Engine:
+ * Migrates all scan records buffered in presensi-global-config to Supabase
+ * Runs automatically every 24 hours via Vercel Cron.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +19,6 @@ export async function GET(req: NextRequest) {
 
     // Verify bearer token or Vercel cron header
     if (!isVercelCron && authHeader !== `Bearer ${cronSecret}`) {
-      // Allow internal admin trigger with query key if needed
       const { searchParams } = new URL(req.url);
       if (searchParams.get('key') !== cronSecret) {
         return NextResponse.json({ error: 'Unauthorized cron trigger' }, { status: 401 });
@@ -28,19 +28,8 @@ export async function GET(req: NextRequest) {
     const todayDate = getWIBDate();
     const nowTime = getWIBTime();
 
-    // 1. Fetch summary of today's attendance records in Supabase
-    const todayAttendances = await prisma.attendance.findMany({
-      where: { date: todayDate },
-      include: {
-        student: {
-          select: {
-            fullName: true,
-            nis: true,
-            school: { select: { name: true } },
-          },
-        },
-      },
-    });
+    // 1. MIGRATE BUFFERED SCANS FROM PRESENSI-GLOBAL-CONFIG TO SUPABASE
+    const migrationResult = await migrateGlobalScansToSupabase(todayDate);
 
     // 2. Ensure all student cards that have active tokens are marked as AKTIF
     const unactivatedTokens = await prisma.qrToken.findMany({
@@ -62,26 +51,36 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. Log 24-hour sync event to audit log in Supabase
+    // 3. Count total synced attendance in Supabase
+    const totalTodayInSupabase = await prisma.attendance.count({
+      where: { date: todayDate },
+    });
+
+    // 4. Log 24-hour sync event to Supabase Audit Log
     await createAuditLog({
-      action: 'CRON_SUPABASE_SYNC_24H',
-      actor: 'System AutoSync (Vercel Cron)',
-      details: `Sinkronisasi 24 Jam Selesai: ${todayAttendances.length} presensi diverifikasi, ${autoActivatedCount} kartu diselaraskan ke Supabase pada ${todayDate} ${nowTime} WIB.`,
+      action: 'MIGRATE_GLOBAL_CONFIG_TO_SUPABASE_24H',
+      actor: 'Automated Migration Cron (24h)',
+      details: `Migrasi 24 Jam Selesai: ${migrationResult.insertedCount} scan baru dimigrasikan dari presensi-global-config ke Supabase. Total hari ini: ${totalTodayInSupabase} presensi. ${autoActivatedCount} kartu diselaraskan.`,
     });
 
     return NextResponse.json({
       success: true,
-      message: '24-Hour Supabase Sync Completed Successfully',
+      engine: 'presensi-global-config -> supabase',
+      message: '24-Hour Migration from Global Config to Supabase Completed Successfully',
       timestamp: `${todayDate} ${nowTime} WIB`,
-      syncedRecords: {
-        todayAttendanceTotal: todayAttendances.length,
+      stats: {
+        totalBufferedInGlobalConfig: migrationResult.totalBuffered,
+        newlyInsertedToSupabase: migrationResult.insertedCount,
+        alreadyPresent: migrationResult.alreadyPresentCount,
+        totalTodayInSupabase,
         cardsAutoActivated: autoActivatedCount,
+        errors: migrationResult.errors,
       },
     });
   } catch (error: any) {
-    console.error('24-Hour Supabase Sync error:', error);
+    console.error('24-Hour Supabase Migration error:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Sync failed' },
+      { success: false, error: error.message || 'Migration failed' },
       { status: 500 }
     );
   }

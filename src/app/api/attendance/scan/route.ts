@@ -3,8 +3,13 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
-import { createAuditLog } from '@/lib/audit';
 import { getWIBDate, getWIBTime } from '@/lib/dateUtils';
+import {
+  hasScannedTodayInGlobalConfig,
+  recordScanToGlobalConfig,
+  lookupCardInGlobalConfig,
+  warmUpGlobalCards,
+} from '@/lib/globalConfig';
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,7 +39,7 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {}
 
-    // If the QR scanned is a URL, extract the query or token parameter
+    // If the QR scanned is a URL, extract query or token parameter
     try {
       if (trimmedToken.startsWith('http://') || trimmedToken.startsWith('https://')) {
         const parsed = new URL(trimmedToken);
@@ -45,50 +50,63 @@ export async function POST(req: NextRequest) {
       }
     } catch (e) {}
 
-    const studentInclude = {
-      card: {
-        include: {
-          student: {
-            include: {
-              school: true,
-              classRoom: true,
+    const localDateStr = getWIBDate();
+    const localTimeStr = getWIBTime();
+
+    // 1. FAST-PATH: Instant Lookup in Global Config Card Cache
+    let cardData = lookupCardInGlobalConfig(trimmedToken);
+
+    // Fallback: If not found in memory cache, query DB and warm up cache
+    if (!cardData) {
+      const studentInclude = {
+        card: {
+          include: {
+            student: {
+              include: {
+                school: true,
+                classRoom: true,
+              },
             },
           },
         },
-      },
-    };
+      };
 
-    // 1. Fast-path lookup by unique QR token (indexed B-tree: 1ms)
-    let qrTokenRecord = await prisma.qrToken.findUnique({
-      where: { token: trimmedToken },
-      include: studentInclude,
-    });
-
-    // Fallback: If not found by unique token, check cardId or student NIS
-    if (!qrTokenRecord) {
-      qrTokenRecord = await prisma.qrToken.findFirst({
-        where: {
-          OR: [
-            { card: { cardId: trimmedToken } },
-            { card: { student: { nis: trimmedToken } } },
-          ],
-        },
+      let qrTokenRecord = await prisma.qrToken.findUnique({
+        where: { token: trimmedToken },
         include: studentInclude,
       });
+
+      if (!qrTokenRecord) {
+        qrTokenRecord = await prisma.qrToken.findFirst({
+          where: {
+            OR: [
+              { card: { cardId: trimmedToken } },
+              { card: { student: { nis: trimmedToken } } },
+            ],
+          },
+          include: studentInclude,
+        });
+      }
+
+      if (!qrTokenRecord) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'UNREGISTERED',
+            error: `QR Code tidak terdaftar (${trimmedToken}). Pastikan kartu dicetak dari sistem SmartSiswa.`,
+          },
+          { status: 200 }
+        );
+      }
+
+      cardData = qrTokenRecord.card;
+      // Warm up global cache with this record
+      warmUpGlobalCards([qrTokenRecord.card]);
     }
 
-    if (!qrTokenRecord) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'UNREGISTERED',
-          error: `QR Code tidak terdaftar (${trimmedToken}). Pastikan kartu dicetak dari sistem SmartSiswa.`,
-        },
-        { status: 200 }
-      );
-    }
-
-    const { card } = qrTokenRecord;
+    const card = cardData;
+    const student = card.student;
+    const school = student.school || { lateAfter: '07:45', name: 'Sekolah' };
 
     // 2. Check if card was explicitly deactivated (NONAKTIF)
     if (card.status === 'NONAKTIF') {
@@ -98,9 +116,9 @@ export async function POST(req: NextRequest) {
           code: 'INACTIVE',
           error: 'Kartu ini telah dinonaktifkan oleh sekolah / Developer.',
           student: {
-            fullName: card.student.fullName,
-            nis: card.student.nis,
-            className: card.student.classRoom.name,
+            fullName: student.fullName,
+            nis: student.nis,
+            className: student.classRoom?.name || '',
             cardId: card.cardId,
           },
         },
@@ -108,26 +126,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Auto-activate card and token if previously DICETAK / SIAP_CETAK / DRAFT
-    if (card.status !== 'AKTIF' || !qrTokenRecord.isActive) {
-      await prisma.studentCard.update({
-        where: { id: card.id },
-        data: {
-          status: 'AKTIF',
-          activatedAt: card.activatedAt || new Date(),
-        },
-      });
-
-      await prisma.qrToken.update({
-        where: { id: qrTokenRecord.id },
-        data: { isActive: true },
-      });
-    }
-
-    const student = card.student;
-    const school = student.school;
-
-    // Multi-tenant check: if teacher is from a specific school, verify student belongs to the same school
+    // Multi-tenant check: if teacher is from a specific school, verify student belongs to same school
     if (user.role === 'TEACHER' && user.schoolId && user.schoolId !== student.schoolId) {
       return NextResponse.json(
         {
@@ -139,11 +138,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Realtime Indonesian Western Time (WIB - Asia/Jakarta, UTC+7)
-    const localDateStr = getWIBDate();
-    const localTimeStr = getWIBTime();
+    // 3. CHECK DUPLICATE SCAN IN GLOBAL CONFIG (0ms Latency)
+    const existingInGlobal = hasScannedTodayInGlobalConfig(student.id, localDateStr);
+    if (existingInGlobal) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'ALREADY_SCANNED',
+          error: 'Siswa sudah melakukan presensi hari ini (Global Config).',
+          attendance: {
+            time: existingInGlobal.time,
+            date: existingInGlobal.date,
+            status: existingInGlobal.status,
+            scannedBy: existingInGlobal.scannedBy,
+          },
+          student: {
+            id: student.id,
+            fullName: student.fullName,
+            nis: student.nis,
+            nisn: student.nisn,
+            gender: student.gender,
+            className: student.classRoom?.name || '',
+            photoUrl: student.photoUrl,
+            cardId: card.cardId,
+            schoolName: school.name,
+          },
+        },
+        { status: 200 }
+      );
+    }
 
-    const existingAttendance = await prisma.attendance.findUnique({
+    // Fallback check in Supabase (if previously persisted before server reboot)
+    const existingInDb = await prisma.attendance.findUnique({
       where: {
         studentId_date: {
           studentId: student.id,
@@ -152,20 +178,31 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (existingAttendance) {
+    if (existingInDb) {
+      // Re-populate global config cache
+      await recordScanToGlobalConfig({
+        studentId: student.id,
+        schoolId: student.schoolId,
+        date: existingInDb.date,
+        time: existingInDb.time,
+        status: existingInDb.status as 'HADIR' | 'TERLAMBAT',
+        scannedBy: existingInDb.scannedBy,
+        deviceInfo: existingInDb.deviceInfo || 'Database Sync',
+      });
+
       return NextResponse.json(
         {
           success: false,
           code: 'ALREADY_SCANNED',
           error: 'Siswa sudah melakukan presensi hari ini.',
-          attendance: existingAttendance,
+          attendance: existingInDb,
           student: {
             id: student.id,
             fullName: student.fullName,
             nis: student.nis,
             nisn: student.nisn,
             gender: student.gender,
-            className: student.classRoom.name,
+            className: student.classRoom?.name || '',
             photoUrl: student.photoUrl,
             cardId: card.cardId,
             schoolName: school.name,
@@ -178,65 +215,29 @@ export async function POST(req: NextRequest) {
     // 4. Determine status: HADIR vs TERLAMBAT based on school rules
     const lateThreshold = school.lateAfter || '07:45';
     const isLate = localTimeStr.localeCompare(lateThreshold) > 0;
-    const attendanceStatus = isLate ? 'TERLAMBAT' : 'HADIR';
+    const attendanceStatus: 'HADIR' | 'TERLAMBAT' = isLate ? 'TERLAMBAT' : 'HADIR';
 
-    // 5. Create attendance record with race condition protection (prevents 500 collision errors)
-    let attendance;
-    try {
-      attendance = await prisma.attendance.create({
-        data: {
-          studentId: student.id,
-          schoolId: student.schoolId,
-          date: localDateStr,
-          time: localTimeStr,
-          status: attendanceStatus,
-          scannedBy: user.name,
-          deviceInfo: deviceInfo || 'Web Scanner (Camera)',
-        },
-      });
-    } catch (createError: any) {
-      // If concurrent request created it at the exact same millisecond
-      if (createError?.code === 'P2002') {
-        const fallbackExisting = await prisma.attendance.findUnique({
-          where: {
-            studentId_date: {
-              studentId: student.id,
-              date: localDateStr,
-            },
-          },
-        });
-        return NextResponse.json(
-          {
-            success: false,
-            code: 'ALREADY_SCANNED',
-            error: 'Siswa sudah melakukan presensi hari ini.',
-            attendance: fallbackExisting,
-            student: {
-              id: student.id,
-              fullName: student.fullName,
-              nis: student.nis,
-              nisn: student.nisn,
-              gender: student.gender,
-              className: student.classRoom.name,
-              photoUrl: student.photoUrl,
-              cardId: card.cardId,
-              schoolName: school.name,
-            },
-          },
-          { status: 200 }
-        );
-      }
-      throw createError;
-    }
-
-    // 6. Create audit log in background (non-blocking for ultra-fast scan latency)
-    createAuditLog({
-      action: 'SCAN_ATTENDANCE',
-      actor: user.name,
-      details: `Scan QR ${student.fullName} (NIS: ${student.nis}, ${student.classRoom.name}) - Status: ${attendanceStatus} pada ${localTimeStr}`,
+    // 5. STORE DIRECTLY INTO PRESENSI-GLOBAL-CONFIG (No heavy DB lock during scan!)
+    const recordedScan = await recordScanToGlobalConfig({
+      studentId: student.id,
       schoolId: student.schoolId,
-      ipAddress: req.headers.get('x-forwarded-for') || '127.0.0.1',
-    }).catch((err) => console.error('Scan audit log background error:', err));
+      date: localDateStr,
+      time: localTimeStr,
+      status: attendanceStatus,
+      scannedBy: user.name,
+      deviceInfo: deviceInfo || 'Kamera HP (Global Config)',
+      studentData: {
+        id: student.id,
+        fullName: student.fullName,
+        nis: student.nis,
+        nisn: student.nisn,
+        gender: student.gender,
+        className: student.classRoom?.name || '',
+        photoUrl: student.photoUrl,
+        cardId: card.cardId,
+        schoolName: school.name,
+      },
+    });
 
     return NextResponse.json({
       success: true,
@@ -244,18 +245,25 @@ export async function POST(req: NextRequest) {
       status: attendanceStatus,
       time: localTimeStr,
       date: localDateStr,
+      engine: 'presensi-global-config',
       student: {
         id: student.id,
         fullName: student.fullName,
         nis: student.nis,
         nisn: student.nisn,
         gender: student.gender,
-        className: student.classRoom.name,
+        className: student.classRoom?.name || '',
         photoUrl: student.photoUrl,
         cardId: card.cardId,
         schoolName: school.name,
       },
-      attendance,
+      attendance: {
+        id: recordedScan.id || `gc_${Date.now()}`,
+        date: localDateStr,
+        time: localTimeStr,
+        status: attendanceStatus,
+        scannedBy: user.name,
+      },
     });
   } catch (error) {
     console.error('Attendance scan error:', error);
