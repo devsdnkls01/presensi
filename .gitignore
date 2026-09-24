@@ -13,16 +13,9 @@ build/
 dist/
 
 # Production environment files (CRITICAL SECURITY)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production
-.env.production.local
+.env*
 *.env
-
-# Allow only .env.example
-!.env.example
+*.env.*
 
 # Debug and System logs
 npm-debug.log*
