@@ -4,10 +4,11 @@ import { SESSION_COOKIE_NAME, parseSessionToken } from './lib/auth';
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow public assets and Next.js internals
+  // Allow public assets, cron jobs, and Next.js internals
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/cron') ||
     pathname === '/favicon.ico' ||
     pathname === '/icon.png'
   ) {
