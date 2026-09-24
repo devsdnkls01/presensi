@@ -217,7 +217,7 @@ export async function POST(req: NextRequest) {
     const isLate = localTimeStr.localeCompare(lateThreshold) > 0;
     const attendanceStatus: 'HADIR' | 'TERLAMBAT' = isLate ? 'TERLAMBAT' : 'HADIR';
 
-    // 5. STORE DIRECTLY INTO PRESENSI-GLOBAL-CONFIG (No heavy DB lock during scan!)
+    // 5. STORE IN PRESENSI-GLOBAL-CONFIG AND SUPABASE DATABASE (Real-time sync)
     const recordedScan = await recordScanToGlobalConfig({
       studentId: student.id,
       schoolId: student.schoolId,
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
       time: localTimeStr,
       status: attendanceStatus,
       scannedBy: user.name,
-      deviceInfo: deviceInfo || 'Kamera HP (Global Config)',
+      deviceInfo: deviceInfo || 'Kamera HP (Native 60FPS)',
       studentData: {
         id: student.id,
         fullName: student.fullName,
@@ -238,6 +238,34 @@ export async function POST(req: NextRequest) {
         schoolName: school.name,
       },
     });
+
+    let attendanceDbRecord;
+    try {
+      attendanceDbRecord = await prisma.attendance.upsert({
+        where: {
+          studentId_date: {
+            studentId: student.id,
+            date: localDateStr,
+          },
+        },
+        create: {
+          studentId: student.id,
+          schoolId: student.schoolId,
+          date: localDateStr,
+          time: localTimeStr,
+          status: attendanceStatus,
+          scannedBy: user.name,
+          deviceInfo: deviceInfo || 'Kamera HP (Native 60FPS)',
+        },
+        update: {
+          time: localTimeStr,
+          status: attendanceStatus,
+          scannedBy: user.name,
+        },
+      });
+    } catch (e) {
+      console.warn('DB attendance upsert fallback:', e);
+    }
 
     return NextResponse.json({
       success: true,
@@ -257,7 +285,7 @@ export async function POST(req: NextRequest) {
         cardId: card.cardId,
         schoolName: school.name,
       },
-      attendance: {
+      attendance: attendanceDbRecord || {
         id: recordedScan.id || `gc_${Date.now()}`,
         date: localDateStr,
         time: localTimeStr,

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { getWIBDate, getWIBMonth } from '@/lib/dateUtils';
+import { getTodayScansFromGlobalConfig } from '@/lib/globalConfig';
 
 export async function GET(req: NextRequest) {
   try {
@@ -102,6 +103,21 @@ export async function GET(req: NextRequest) {
         time: att.time,
         scannedBy: att.scannedBy,
       };
+    }
+
+    // Merge any live scans in global config for today (100% Real-time synchronization)
+    const liveScans = getTodayScansFromGlobalConfig();
+    for (const scan of liveScans) {
+      if (!attendanceMap[scan.studentId]) {
+        attendanceMap[scan.studentId] = {};
+      }
+      if (!attendanceMap[scan.studentId][scan.date]) {
+        attendanceMap[scan.studentId][scan.date] = {
+          status: scan.status,
+          time: scan.time,
+          scannedBy: scan.scannedBy,
+        };
+      }
     }
 
     // Fetch school holidays for this month

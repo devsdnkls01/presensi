@@ -385,55 +385,7 @@ export default function TeacherAttendanceRecapPage() {
           </div>
         </div>
 
-        {/* Poin 49: Statistik Siswa dengan Kehadiran Rendah (< 80%) */}
-        {recapData.matrix.filter((m) => m.summary.persentase < 80).length > 0 && (
-          <div
-            className="no-print"
-            style={{
-              marginBottom: '1.5rem',
-              backgroundColor: '#fffbeb',
-              border: '1px solid #fcd34d',
-              borderRadius: '12px',
-              padding: '1rem 1.25rem',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.85rem',
-            }}
-          >
-            <AlertTriangle size={20} color="#d97706" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#92400e', marginBottom: '0.25rem' }}>
-                PERHATIAN ADMINISTRATIF: Siswa dengan Kehadiran di Bawah 80%
-              </div>
-              <div style={{ fontSize: '0.78rem', color: '#b45309', marginBottom: '0.5rem' }}>
-                Informasi statistik administratif untuk memantau siswa yang membutuhkan pendampingan kehadiran:
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                {recapData.matrix
-                  .filter((m) => m.summary.persentase < 80)
-                  .map((m) => (
-                    <div
-                      key={m.student.id}
-                      style={{
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #fde68a',
-                        padding: '0.25rem 0.6rem',
-                        borderRadius: '6px',
-                        fontSize: '0.78rem',
-                        color: '#78350f',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                      }}
-                    >
-                      <strong>{m.student.fullName}</strong>
-                      <span style={{ color: '#dc2626', fontWeight: 700 }}>({m.summary.persentase}%)</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
-        )}
+
       </>
       )}
 
