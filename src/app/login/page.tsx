@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { QrCode, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { downloadAllSchoolData } from '@/lib/deviceCache';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function LoginPage() {
           try {
             localStorage.setItem('smartsiswa_user', JSON.stringify(data.user));
           } catch (e) {}
+          downloadAllSchoolData().catch(() => {});
           if (data.user.role === 'DEVELOPER') {
             router.replace('/developer/dashboard');
           } else if (data.user.role === 'SCHOOL_ADMIN') {
@@ -54,6 +56,8 @@ export default function LoginPage() {
         try {
           localStorage.setItem('smartsiswa_user', JSON.stringify(data.user));
         } catch (e) {}
+        // Trigger non-blocking full school data pre-caching immediately
+        downloadAllSchoolData(true).catch(() => {});
       }
 
       router.push(data.redirectUrl);

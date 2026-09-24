@@ -93,22 +93,29 @@ export default function SchoolStudentsPage() {
 
   // Instant local cache hydration (0ms)
   useEffect(() => {
-    try {
-      const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
-      if (cachedClasses) {
-        const parsed = JSON.parse(cachedClasses);
-        if (Array.isArray(parsed) && parsed.length > 0) setClasses(parsed);
-      }
-      const cachedStudents = localStorage.getItem('smartsiswa_students_cache_all');
-      if (cachedStudents) {
-        const parsed = JSON.parse(cachedStudents);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setStudents(parsed);
-          setLoading(false);
+    const hydrate = () => {
+      try {
+        const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
+        if (cachedClasses) {
+          const parsed = JSON.parse(cachedClasses);
+          if (Array.isArray(parsed) && parsed.length > 0) setClasses(parsed);
         }
-      }
-    } catch (e) {}
-  }, []);
+        const cacheKey = `smartsiswa_students_cache_${selectedClass || 'all'}`;
+        const cachedStudents = localStorage.getItem(cacheKey) || localStorage.getItem('smartsiswa_students_cache_all');
+        if (cachedStudents) {
+          const parsed = JSON.parse(cachedStudents);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setStudents(parsed);
+            setLoading(false);
+          }
+        }
+      } catch (e) {}
+    };
+
+    hydrate();
+    window.addEventListener('smartsiswa:cache-updated', hydrate);
+    return () => window.removeEventListener('smartsiswa:cache-updated', hydrate);
+  }, [selectedClass]);
 
   useEffect(() => {
     fetch('/api/auth/me')

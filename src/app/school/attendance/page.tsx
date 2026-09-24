@@ -57,23 +57,29 @@ export default function SchoolAttendanceReportPage() {
 
   // Instant local cache hydration (0ms)
   useEffect(() => {
-    try {
-      const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
-      if (cachedClasses) {
-        const parsed = JSON.parse(cachedClasses);
-        if (Array.isArray(parsed) && parsed.length > 0) setClasses(parsed);
-      }
-      const initialDate = new Date().toISOString().slice(0, 10);
-      const cachedAtt = localStorage.getItem(`smartsiswa_attendance_${initialDate}`);
-      if (cachedAtt) {
-        const parsed = JSON.parse(cachedAtt);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setAttendances(parsed);
-          setLoading(false);
+    const hydrate = () => {
+      try {
+        const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
+        if (cachedClasses) {
+          const parsed = JSON.parse(cachedClasses);
+          if (Array.isArray(parsed) && parsed.length > 0) setClasses(parsed);
         }
-      }
-    } catch (e) {}
-  }, []);
+        const activeDate = date || new Date().toISOString().slice(0, 10);
+        const cachedAtt = localStorage.getItem(`smartsiswa_attendance_${activeDate}`);
+        if (cachedAtt) {
+          const parsed = JSON.parse(cachedAtt);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAttendances(parsed);
+            setLoading(false);
+          }
+        }
+      } catch (e) {}
+    };
+
+    hydrate();
+    window.addEventListener('smartsiswa:cache-updated', hydrate);
+    return () => window.removeEventListener('smartsiswa:cache-updated', hydrate);
+  }, [date]);
 
   useEffect(() => {
     fetch('/api/auth/me')

@@ -81,29 +81,35 @@ export default function TeacherAttendanceRecapPage() {
 
   // Read initial cache from localStorage immediately (0ms instant startup)
   useEffect(() => {
-    try {
-      const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
-      if (cachedClasses) {
-        const parsed = JSON.parse(cachedClasses);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setClasses(parsed);
-          if (!selectedClassId) setSelectedClassId(parsed[0].id);
+    const hydrateFromCache = () => {
+      try {
+        const cachedClasses = localStorage.getItem('smartsiswa_classes_cache');
+        if (cachedClasses) {
+          const parsed = JSON.parse(cachedClasses);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setClasses(parsed);
+            if (!selectedClassId) setSelectedClassId(parsed[0].id);
+          }
         }
-      }
 
-      const initialKey = `smartsiswa_rekap_${selectedMonth}_${selectedClassId || 'all'}`;
-      const cachedRecap = localStorage.getItem(initialKey);
-      if (cachedRecap) {
-        const parsedRecap = JSON.parse(cachedRecap);
-        if (parsedRecap && parsedRecap.matrix) {
-          setRecapData(parsedRecap);
-          setLoading(false);
+        const initialKey = `smartsiswa_rekap_${selectedMonth}_${selectedClassId || 'all'}`;
+        const cachedRecap = localStorage.getItem(initialKey);
+        if (cachedRecap) {
+          const parsedRecap = JSON.parse(cachedRecap);
+          if (parsedRecap && parsedRecap.matrix) {
+            setRecapData(parsedRecap);
+            setLoading(false);
+          }
         }
+      } catch (e) {
+        console.error('Failed to read local cache:', e);
       }
-    } catch (e) {
-      console.error('Failed to read local cache:', e);
-    }
-  }, []);
+    };
+
+    hydrateFromCache();
+    window.addEventListener('smartsiswa:cache-updated', hydrateFromCache);
+    return () => window.removeEventListener('smartsiswa:cache-updated', hydrateFromCache);
+  }, [selectedClassId, selectedMonth]);
 
   // Fetch current user
   useEffect(() => {
