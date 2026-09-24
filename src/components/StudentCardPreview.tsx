@@ -5,6 +5,9 @@ import QRCode from 'qrcode';
 
 const qrDataUrlCache = new Map<string, string>();
 
+export const CLOUDINARY_DEFAULT_AVATAR = 'https://res.cloudinary.com/ixjihcvx/image/upload/v1790218623/presensi-siswa/students/default_pixar_student.png';
+export const CLOUDINARY_DEFAULT_LOGO = 'https://res.cloudinary.com/ixjihcvx/image/upload/v1790218638/presensi-siswa/logos/school_logo_kalisalak_01.png';
+
 export type CardTemplateId =
   | 'sapphire-navy'
   | 'emerald-cosmic'
@@ -171,7 +174,7 @@ function T1Front(p: RenderProps) {
           <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#061e45', padding: '0.4mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, #1d4ed8 0%, #0a2558 55%, #020b1a 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.photoUrl || '/pixar-student.png'} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
+              <img src={p.photoUrl || CLOUDINARY_DEFAULT_AVATAR} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
             </div>
           </div>
         </div>
@@ -270,7 +273,7 @@ function T2Front(p: RenderProps) {
       <div style={{ position: 'absolute', top: '16mm', left: 0, right: 0, zIndex: 10, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
         <div style={{ width: '23mm', height: '26mm', borderRadius: '2.5mm', border: '0.7mm solid #34d399', overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, #059669 0%, #064e3b 55%, #011510 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 6mm rgba(52,211,153,0.35), 0 2mm 8mm rgba(0,0,0,0.4)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={p.photoUrl || '/pixar-student.png'} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
+          <img src={p.photoUrl || CLOUDINARY_DEFAULT_AVATAR} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
         </div>
         <div style={{ marginTop: '1.6mm', fontSize: '2.5mm', fontWeight: 900, color: '#ecfdf5', textTransform: 'uppercase' as const, textAlign: 'center', maxWidth: '49mm', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 0 5mm rgba(52,211,153,0.4)' }} title={p.studentName}>{p.studentName}</div>
         <div style={{ marginTop: '0.8mm', background: 'rgba(52,211,153,0.15)', border: '0.35mm solid rgba(52,211,153,0.5)', borderRadius: '999mm', padding: '0.35mm 3.5mm', fontSize: '1.6mm', fontWeight: 800, color: '#6ee7b7' }}>{p.classNameStr}</div>
@@ -360,7 +363,7 @@ function T3Front(p: RenderProps) {
       <div style={{ position: 'absolute', top: '16.5mm', left: 0, right: 0, zIndex: 10, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
         <div style={{ width: '22.5mm', height: '25.5mm', borderRadius: '1.8mm', border: '0.7mm solid #be123c', overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, #ffffff 0%, #ffe4e6 50%, #fecdd3 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2mm 8mm rgba(190,18,60,0.2), 0 0 0 1.2mm rgba(190,18,60,0.08)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={p.photoUrl || '/pixar-student.png'} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
+          <img src={p.photoUrl || CLOUDINARY_DEFAULT_AVATAR} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
         </div>
         <div style={{ marginTop: '1.5mm', fontSize: '2.4mm', fontWeight: 900, color: '#3b0012', textTransform: 'uppercase' as const, textAlign: 'center', maxWidth: '49mm', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.studentName}>{p.studentName}</div>
         <div style={{ marginTop: '0.7mm', background: 'linear-gradient(135deg, #be123c, #e11d48)', borderRadius: '999mm', padding: '0.4mm 3.5mm', fontSize: '1.6mm', fontWeight: 800, color: '#fff1f2' }}>{p.classNameStr}</div>
@@ -448,7 +451,7 @@ function T4Front(p: RenderProps) {
       <div style={{ position: 'absolute', top: '16.5mm', left: 0, right: 0, zIndex: 10, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
         <div style={{ width: '23mm', height: '25.5mm', borderRadius: '0.8mm', border: '0.6mm solid #00d4ff', overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, #0e7490 0%, #082f49 55%, #050508 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 8mm rgba(0,212,255,0.35), inset 0 0 0 0.2mm rgba(0,212,255,0.15)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={p.photoUrl || '/pixar-student.png'} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
+          <img src={p.photoUrl || CLOUDINARY_DEFAULT_AVATAR} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
         </div>
         <div style={{ marginTop: '1.6mm', fontSize: '2.45mm', fontWeight: 900, color: '#e0f2fe', textTransform: 'uppercase' as const, textAlign: 'center', maxWidth: '49mm', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis', textShadow: '0 0 5mm rgba(0,212,255,0.4)' }} title={p.studentName}>{p.studentName}</div>
         <div style={{ marginTop: '0.8mm', background: 'rgba(0,212,255,0.1)', border: '0.35mm solid rgba(0,212,255,0.45)', borderRadius: '1mm', padding: '0.35mm 3.5mm', fontSize: '1.6mm', fontWeight: 800, color: '#00d4ff' }}>{p.classNameStr}</div>
@@ -546,7 +549,7 @@ function T5Front(p: RenderProps) {
           <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#1a0533', padding: '0.35mm', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, #7e22ce 0%, #3b0764 60%, #0f0520 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.photoUrl || '/pixar-student.png'} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
+              <img src={p.photoUrl || CLOUDINARY_DEFAULT_AVATAR} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
             </div>
           </div>
         </div>
@@ -639,7 +642,7 @@ function T6Front(p: RenderProps) {
       <div style={{ position: 'absolute', top: '16mm', left: 0, right: 0, zIndex: 10, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
         <div style={{ width: '22mm', height: '26mm', borderRadius: '50% 50% 50% 50% / 35% 35% 65% 65%', border: '0.7mm solid rgba(252,165,165,0.7)', overflow: 'hidden', background: 'radial-gradient(circle at 50% 35%, #991b1b 0%, #450a0a 60%, #1a0008 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 6mm rgba(220,38,38,0.25), 0 2mm 8mm rgba(0,0,0,0.5)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={p.photoUrl || '/pixar-student.png'} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
+          <img src={p.photoUrl || CLOUDINARY_DEFAULT_AVATAR} alt={p.studentName} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 12%' }} />
         </div>
         <div style={{ marginTop: '1.6mm', fontSize: '2.45mm', fontWeight: 900, color: '#fff1f2', textTransform: 'uppercase' as const, textAlign: 'center', maxWidth: '49mm', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.studentName}>{p.studentName}</div>
         <div style={{ marginTop: '0.8mm', background: 'rgba(252,165,165,0.1)', border: '0.35mm solid rgba(252,165,165,0.45)', borderRadius: '999mm', padding: '0.35mm 3.5mm', fontSize: '1.6mm', fontWeight: 800, color: '#fca5a5' }}>{p.classNameStr}</div>
@@ -724,8 +727,8 @@ function StudentCardPreviewComponent({
   isPrint = false,
   watermark = false,
 }: StudentCardPreviewProps) {
-  const actualLogo = logoUrl || '/logo.svg';
-  const actualPhoto = photoUrl || '/pixar-student.png';
+  const actualLogo = logoUrl || CLOUDINARY_DEFAULT_LOGO;
+  const actualPhoto = photoUrl || CLOUDINARY_DEFAULT_AVATAR;
   const tokenPayload = qrToken || 'STU-B7A66EDE';
   const [qrDataUrl, setQrDataUrl] = useState<string>(() => qrDataUrlCache.get(tokenPayload) || '');
   const frontId = idPrefix ? `${idPrefix}-front` : `card-${cardId}-front`;

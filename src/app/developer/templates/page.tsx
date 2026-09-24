@@ -21,7 +21,7 @@ export default function DeveloperTemplatesPage() {
   const [sloganLine3, setSloganLine3] = useState('BERPRESTASI');
   const [primaryColor, setPrimaryColor] = useState('#050e1f');
   const [secondaryColor, setSecondaryColor] = useState('#0d2a5c');
-  const [logoUrl, setLogoUrl] = useState<string>('/logo.svg');
+  const [logoUrl, setLogoUrl] = useState<string>('https://res.cloudinary.com/ixjihcvx/image/upload/v1790218638/presensi-siswa/logos/school_logo_kalisalak_01.png');
   const [templateId, setTemplateId] = useState<CardTemplateId>('sapphire-navy');
 
   const fileInputRef = useRef<HTMLInputElement>(null);

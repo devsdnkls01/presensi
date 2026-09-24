@@ -35,7 +35,7 @@ export async function GET() {
 
     return NextResponse.json({
       template,
-      schoolLogo: school?.logo || '/logo.svg',
+      schoolLogo: school?.logo || 'https://res.cloudinary.com/ixjihcvx/image/upload/v1790218638/presensi-siswa/logos/school_logo_kalisalak_01.png',
       schoolName: school?.name || 'SDN KALISALAK 01',
     });
   } catch (error) {
