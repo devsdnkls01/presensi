@@ -118,16 +118,16 @@ export default function TeacherScanPage() {
 
     const now = Date.now();
 
-    // 1. Thread-safe lock: drop frame immediately if already processing (camera keeps streaming smoothly!)
+    // 1. Thread-safe lock: drop frame immediately if already processing
     if (isProcessingRef.current) return;
 
-    // 2. Anti-repeat check: ignore exact same token within 10 seconds to prevent repeated scans for the same child
-    if (!isManual && trimmed === lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 10000)) {
+    // 2. Anti-repeat check for the SAME student: 5s cooldown so the same card doesn't trigger repeatedly
+    if (!isManual && trimmed === lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 5000)) {
       return;
     }
 
-    // 3. Minimum cooldown between ANY two scans: 1.2s to prevent jitter
-    if (!isManual && (now - lastScannedTimeRef.current < 1200)) {
+    // 3. Ultra-fast cooldown between DIFFERENT students: only 300ms (queue moves at lightning speed!)
+    if (!isManual && trimmed !== lastScannedTokenRef.current && (now - lastScannedTimeRef.current < 300)) {
       return;
     }
 
@@ -137,12 +137,10 @@ export default function TeacherScanPage() {
     lastScannedTimeRef.current = now;
     setIsProcessing(true);
 
-    // Note: WE DO NOT PAUSE THE CAMERA!
-    // Keeping the camera stream live continuously eliminates flickering and camera crashes on mobile devices!
-
-    // 0ms Instant optimistic display from browser cache if available
+    // 0ms Instant optimistic display & instant audio feedback from browser pre-cache
     const cachedStudent = studentCacheRef.current.get(trimmed);
     if (cachedStudent) {
+      sound.playSuccess(); // DING IMMEDIATELY! ZERO LATENCY!
       setScanResult({
         success: true,
         code: 'SUCCESS',
@@ -175,9 +173,11 @@ export default function TeacherScanPage() {
       setScanResult(data);
 
       if (res.ok && data.success) {
-        sound.playSuccess();
+        if (!cachedStudent) {
+          sound.playSuccess();
+        }
         setRecentScans((prev) => {
-          const updated = [data, ...prev.slice(0, 7)];
+          const updated = [data, ...prev.filter((s) => s.student?.nis !== data.student?.nis)].slice(0, 8);
           try {
             localStorage.setItem('smartsiswa_recent_scans', JSON.stringify(updated));
           } catch (e) {}
@@ -196,15 +196,15 @@ export default function TeacherScanPage() {
         error: 'Gagal menghubungi server.',
       });
     } finally {
-      // Release lock after 1.5s cooldown so the next student can be scanned seamlessly
+      // Release lock in only 300ms so the NEXT student in line scans INSTANTLY!
       setTimeout(() => {
         isProcessingRef.current = false;
         setIsProcessing(false);
-      }, 1500);
+      }, 300);
     }
   };
 
-  // Safe camera starter: continuous 24FPS stream that opens instantly without double permission prompts
+  // Safe camera starter: continuous 25FPS stream with FULL-FRAME decoding (no tiny box limits)
   const startScanner = async () => {
     if (isStartingRef.current) return;
     isStartingRef.current = true;
@@ -258,29 +258,17 @@ export default function TeacherScanPage() {
       });
       scannerRef.current = qrScanner;
 
-      const qrBoxCalc = (viewfinderWidth: number, viewfinderHeight: number) => {
-        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-        const size = Math.floor(minEdge * 0.75);
-        const clamped = Math.max(160, Math.min(size, 260));
-        return {
-          width: clamped,
-          height: clamped,
-        };
-      };
-
       const scanSuccessCallback = (decodedText: string) => {
         processToken(decodedText);
       };
 
-      // Direct start with environment (back) camera.
-      // On HTTPS, Chrome uses saved site permission and starts IMMEDIATELY without asking!
+      // Full-frame scanning without qrbox restriction:
+      // Scans instantly the millisecond ANY part of the QR code enters the camera view!
       try {
         await qrScanner.start(
           { facingMode: 'environment' },
           {
-            fps: 24,
-            qrbox: qrBoxCalc,
-            aspectRatio: 1.0,
+            fps: 25,
           },
           scanSuccessCallback,
           () => {}
@@ -291,9 +279,7 @@ export default function TeacherScanPage() {
         await qrScanner.start(
           { facingMode: 'user' },
           {
-            fps: 24,
-            qrbox: qrBoxCalc,
-            aspectRatio: 1.0,
+            fps: 25,
           },
           scanSuccessCallback,
           () => {}
@@ -428,7 +414,10 @@ export default function TeacherScanPage() {
           }
           #qr-reader__dashboard,
           #qr-reader__dashboard_section_csr,
-          #qr-reader__dashboard_section_swaplink {
+          #qr-reader__dashboard_section_swaplink,
+          #qr-reader__scan_region span,
+          #qr-reader__header_message,
+          #qr-reader__status_span {
             display: none !important;
           }
           @keyframes laserScan {
