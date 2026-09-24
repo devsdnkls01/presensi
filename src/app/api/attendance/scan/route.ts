@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const { token, deviceInfo } = body;
 
     if (!token || typeof token !== 'string') {
-      return NextResponse.json({ error: 'Token QR tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Token QR tidak valid.' }, { status: 200 });
     }
 
     let trimmedToken = token.trim();
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
           code: 'UNREGISTERED',
           error: `QR Code tidak terdaftar (${trimmedToken}). Pastikan kartu dicetak dari sistem SmartSiswa.`,
         },
-        { status: 404 }
+        { status: 200 }
       );
     }
 
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
             cardId: card.cardId,
           },
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
           code: 'WRONG_SCHOOL',
           error: `Siswa ini terdaftar di ${school.name}, bukan sekolah Anda.`,
         },
-        { status: 403 }
+        { status: 200 }
       );
     }
 
