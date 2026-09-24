@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, memo } from 'react';
 import QRCode from 'qrcode';
-import { optimizeCloudinaryUrl } from '@/lib/cloudinary';
+import { optimizeCloudinaryUrl } from '@/lib/cloudinaryUtils';
 
 const qrDataUrlCache = new Map<string, string>();
 

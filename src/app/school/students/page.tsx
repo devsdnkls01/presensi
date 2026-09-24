@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import AppLayout from '@/components/AppLayout';
 import { SessionUser } from '@/lib/auth';
 import { useNotification } from '@/context/NotificationContext';
-import { optimizeCloudinaryUrl } from '@/lib/cloudinary';
+import { optimizeCloudinaryUrl } from '@/lib/cloudinaryUtils';
 import {
   Users,
   Plus,
