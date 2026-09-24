@@ -51,13 +51,29 @@ interface ScanResult {
 }
 
 export default function TeacherScanPage() {
-  const [user, setUser] = useState<SessionUser | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('smartsiswa_user');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return null;
+  });
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [manualToken, setManualToken] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [recentScans, setRecentScans] = useState<ScanResult[]>([]);
+  const [recentScans, setRecentScans] = useState<ScanResult[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('smartsiswa_recent_scans');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return [];
+  });
   const [isMirrored, setIsMirrored] = useState(true);
 
   // Synchronous locks & token tracking (immune to asynchronous React closures)
@@ -66,12 +82,17 @@ export default function TeacherScanPage() {
   const lastScannedTokenRef = useRef<string>('');
   const lastScannedTimeRef = useRef<number>(0);
 
-  // Fetch current user
+  // Fetch current user & keep local cache fresh
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => res.json())
       .then((data) => {
-        if (data.user) setUser(data.user);
+        if (data.user) {
+          setUser(data.user);
+          try {
+            localStorage.setItem('smartsiswa_user', JSON.stringify(data.user));
+          } catch (e) {}
+        }
       })
       .catch((e) => console.error(e));
   }, []);
@@ -126,7 +147,13 @@ export default function TeacherScanPage() {
 
       if (res.ok && data.success) {
         sound.playSuccess();
-        setRecentScans((prev) => [data, ...prev.slice(0, 7)]);
+        setRecentScans((prev) => {
+          const updated = [data, ...prev.slice(0, 7)];
+          try {
+            localStorage.setItem('smartsiswa_recent_scans', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
       } else if (data.code === 'ALREADY_SCANNED') {
         sound.playWarning();
       } else {

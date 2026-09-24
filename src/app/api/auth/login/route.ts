@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import { createSessionToken, SESSION_COOKIE_NAME } from '@/lib/auth';
+import { createSessionToken, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
@@ -71,13 +71,17 @@ export async function POST(req: NextRequest) {
       redirectUrl,
     });
 
+    const expiresDate = new Date(Date.now() + SESSION_MAX_AGE * 1000);
+
     response.cookies.set({
       name: SESSION_COOKIE_NAME,
       value: token,
       httpOnly: true,
       path: '/',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: SESSION_MAX_AGE,
+      expires: expiresDate,
     });
 
     return response;

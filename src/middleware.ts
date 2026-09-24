@@ -4,12 +4,12 @@ import { SESSION_COOKIE_NAME, parseSessionToken } from './lib/auth';
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow public assets, Next.js internals, and login
+  // Allow public assets and Next.js internals
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/auth/login') ||
-    pathname === '/login' ||
-    pathname === '/favicon.ico'
+    pathname === '/favicon.ico' ||
+    pathname === '/icon.png'
   ) {
     return NextResponse.next();
   }
@@ -24,6 +24,22 @@ export function middleware(req: NextRequest) {
 
   const sessionCookie = req.cookies.get(SESSION_COOKIE_NAME);
   const user = sessionCookie?.value ? parseSessionToken(sessionCookie.value) : null;
+
+  // Auto-redirect if already logged in and visiting /login
+  if (user && pathname === '/login') {
+    if (user.role === 'DEVELOPER') {
+      return NextResponse.redirect(new URL('/developer/dashboard', req.url));
+    } else if (user.role === 'SCHOOL_ADMIN') {
+      return NextResponse.redirect(new URL('/school/dashboard', req.url));
+    } else {
+      return NextResponse.redirect(new URL('/teacher/scan', req.url));
+    }
+  }
+
+  // Allow guest access to /login
+  if (pathname === '/login') {
+    return NextResponse.next();
+  }
 
   // If not logged in and requesting protected page or api
   if (!user) {
@@ -61,6 +77,7 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    '/login',
     '/developer/:path*',
     '/school/:path*',
     '/teacher/:path*',

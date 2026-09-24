@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { QrCode, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
@@ -11,6 +11,27 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Auto-detect logged-in session on page load & redirect immediately
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) {
+          try {
+            localStorage.setItem('smartsiswa_user', JSON.stringify(data.user));
+          } catch (e) {}
+          if (data.user.role === 'DEVELOPER') {
+            router.replace('/developer/dashboard');
+          } else if (data.user.role === 'SCHOOL_ADMIN') {
+            router.replace('/school/dashboard');
+          } else {
+            router.replace('/teacher/scan');
+          }
+        }
+      })
+      .catch(() => {});
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +48,12 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Gagal masuk.');
+      }
+
+      if (data.user) {
+        try {
+          localStorage.setItem('smartsiswa_user', JSON.stringify(data.user));
+        } catch (e) {}
       }
 
       router.push(data.redirectUrl);

@@ -4,6 +4,19 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  async headers() {
+    return [
+      {
+        source: '/:all*(svg|jpg|png|webp|ico|woff2|woff)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ];
+  },
   experimental: {
     outputFileTracingIncludes: {
       '/**': ['./node_modules/.prisma/client/**/*'],

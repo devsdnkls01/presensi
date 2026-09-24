@@ -35,6 +35,10 @@ export default function Sidebar({ user, isOpen, onClose }: SidebarProps) {
 
   const handleLogout = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('smartsiswa_user');
+        localStorage.removeItem('smartsiswa_recent_scans');
+      }
       await fetch('/api/auth/logout', { method: 'POST' });
       router.push('/login');
       router.refresh();

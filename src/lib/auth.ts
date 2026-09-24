@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 
 export const SESSION_COOKIE_NAME = 'presensi_session';
+export const SESSION_MAX_AGE = 365 * 24 * 60 * 60; // 365 days (permanent login)
 
 const AUTH_SECRET = process.env.AUTH_SECRET || process.env.SESSION_SECRET || 'smartsiswa-auth-secret-key-2026';
 
@@ -157,7 +158,7 @@ function fromBase64Url(b64: string): string {
 export function createSessionToken(user: SessionUser): string {
   const payload = JSON.stringify({
     ...user,
-    exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    exp: Date.now() + SESSION_MAX_AGE * 1000, // 365 days permanent
   });
   const payloadB64 = toBase64Url(payload);
   const signature = hmacSha256Hex(AUTH_SECRET, payloadB64);
