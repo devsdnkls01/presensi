@@ -63,12 +63,22 @@ export function middleware(req: NextRequest) {
   }
 
   // School route protection
-  if (pathname.startsWith('/school') || pathname.startsWith('/api/school')) {
+  if (pathname.startsWith('/school')) {
     if (user.role !== 'SCHOOL_ADMIN' && user.role !== 'DEVELOPER') {
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'Akses Ditolak.' }, { status: 403 });
-      }
       return NextResponse.redirect(new URL('/teacher/scan', req.url));
+    }
+  }
+
+  // School API protection (allow teachers to access school cards/students/classes for scan & attendance operations)
+  if (pathname.startsWith('/api/school')) {
+    const isTeacherAllowedApi =
+      pathname.startsWith('/api/school/cards') ||
+      pathname.startsWith('/api/school/students') ||
+      pathname.startsWith('/api/school/classes') ||
+      pathname.startsWith('/api/school/settings');
+
+    if (!isTeacherAllowedApi && user.role !== 'SCHOOL_ADMIN' && user.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'Akses Ditolak.' }, { status: 403 });
     }
   }
 

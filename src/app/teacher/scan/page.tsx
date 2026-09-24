@@ -51,37 +51,31 @@ interface ScanResult {
 }
 
 export default function TeacherScanPage() {
-  const [user, setUser] = useState<SessionUser | null>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('smartsiswa_user');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return null;
-  });
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [manualToken, setManualToken] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [recentScans, setRecentScans] = useState<ScanResult[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem('smartsiswa_recent_scans');
-        if (cached) return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return [];
-  });
+  const [recentScans, setRecentScans] = useState<ScanResult[]>([]);
   const [isMirrored, setIsMirrored] = useState(true);
 
   // Synchronous locks & token tracking (immune to asynchronous React closures)
-  const scannerRef = useRef<unknown>(null);
+  const scannerRef = useRef<any>(null);
   const isProcessingRef = useRef(false);
   const lastScannedTokenRef = useRef<string>('');
   const lastScannedTimeRef = useRef<number>(0);
   const studentCacheRef = useRef<Map<string, any>>(new Map());
+
+  // Load client cached data after hydration to prevent React error #418 & #425
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('smartsiswa_user');
+      if (cached) setUser(JSON.parse(cached));
+      const cachedScans = localStorage.getItem('smartsiswa_recent_scans');
+      if (cachedScans) setRecentScans(JSON.parse(cachedScans));
+    } catch (e) {}
+  }, []);
 
   // Pre-load student card cache for 0ms instant scan recognition
   useEffect(() => {
@@ -223,124 +217,143 @@ export default function TeacherScanPage() {
     }
   };
 
-  // Start html5-qrcode scanner with double-mount protection & optimal performance
-  useEffect(() => {
-    let isMounted = true;
-    let qrScanner: any = null;
+  // Safe camera starter that adheres strictly to Html5Qrcode constraints
+  const startScanner = async () => {
+    try {
+      setCameraError(null);
 
-    const startScanner = async () => {
-      try {
-        // Wait until #qr-reader element is guaranteed to be in DOM
-        let attempts = 0;
-        while (!document.getElementById('qr-reader') && attempts < 30) {
-          await new Promise((r) => setTimeout(r, 60));
-          attempts++;
-        }
-        if (!isMounted || !document.getElementById('qr-reader')) return;
+      // Wait until #qr-reader element is guaranteed to be in DOM
+      let attempts = 0;
+      while (!document.getElementById('qr-reader') && attempts < 30) {
+        await new Promise((r) => setTimeout(r, 60));
+        attempts++;
+      }
 
-        const container = document.getElementById('qr-reader');
-        if (container) {
-          container.innerHTML = '';
-        }
+      const container = document.getElementById('qr-reader');
+      if (!container) return;
 
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-        if (!isMounted) return;
+      const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
 
-        // Clean up previous instance if any
-        if (scannerRef.current) {
-          try {
-            await (scannerRef.current as any).stop();
-          } catch (e) {}
-        }
-
-        qrScanner = new Html5Qrcode('qr-reader', {
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          verbose: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        });
-        scannerRef.current = qrScanner;
-
-        // Responsive scan box focusing decoder precisely on target area for ultra-fast processing
-        const qrBoxCalc = (viewfinderWidth: number, viewfinderHeight: number) => {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const size = Math.floor(minEdge * 0.72);
-          const clamped = Math.max(180, Math.min(size, 280));
-          return {
-            width: clamped,
-            height: clamped,
-          };
-        };
-
-        const scanSuccessCallback = (decodedText: string) => {
-          if (isMounted) {
-            processToken(decodedText);
-          }
-        };
-
+      // Safely stop and clear previous scanner instance
+      if (scannerRef.current) {
         try {
-          // Attempt optimal 720p constraints for instant QR detection without camera lag
-          await qrScanner.start(
-            {
-              facingMode: 'environment',
-              width: { min: 640, ideal: 1280, max: 1920 },
-              height: { min: 480, ideal: 720, max: 1080 },
-            },
-            {
-              fps: 25, // 25 FPS for immediate real-time QR detection
-              qrbox: qrBoxCalc,
-              aspectRatio: 1.0,
-            },
-            scanSuccessCallback,
-            () => {}
-          );
-        } catch (advErr) {
-          console.warn('Advanced camera constraints failed, falling back to simple:', advErr);
-          await qrScanner.start(
-            { facingMode: 'environment' },
-            {
-              fps: 20,
-              qrbox: qrBoxCalc,
-            },
-            scanSuccessCallback,
-            () => {}
-          );
-        }
+          const currentScanner: any = scannerRef.current;
+          if (currentScanner.isScanning) {
+            await currentScanner.stop();
+          }
+        } catch (e) {}
+        try {
+          (scannerRef.current as any).clear();
+        } catch (e) {}
+        scannerRef.current = null;
+      }
 
-        if (isMounted) {
-          setCameraActive(true);
-          setCameraError(null);
-        } else {
-          try {
-            await qrScanner.stop();
-            qrScanner.clear();
-          } catch (e) {}
+      container.innerHTML = '';
+
+      const qrScanner = new Html5Qrcode('qr-reader', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
+      });
+      scannerRef.current = qrScanner;
+
+      const qrBoxCalc = (viewfinderWidth: number, viewfinderHeight: number) => {
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const size = Math.floor(minEdge * 0.72);
+        const clamped = Math.max(180, Math.min(size, 280));
+        return {
+          width: clamped,
+          height: clamped,
+        };
+      };
+
+      const scanSuccessCallback = (decodedText: string) => {
+        processToken(decodedText);
+      };
+
+      // Determine camera configuration
+      // Html5Qrcode requires cameraIdOrConfig to be either a string ID or an object with EXACTLY 1 key.
+      let cameraConfig: any = { facingMode: 'environment' };
+      try {
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          const backCam = devices.find((d) => {
+            const label = (d.label || '').toLowerCase();
+            return (
+              label.includes('back') ||
+              label.includes('rear') ||
+              label.includes('belakang') ||
+              label.includes('environment')
+            );
+          });
+          cameraConfig = backCam ? backCam.id : devices[0].id;
         }
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.warn('Camera start error or permission denied:', err);
-        setCameraActive(false);
-        setCameraError(
-          'Kamera belum aktif atau izin ditolak. Pastikan izin kamera telah diizinkan di browser.'
+      } catch (camErr) {
+        cameraConfig = { facingMode: 'environment' };
+      }
+
+      try {
+        await qrScanner.start(
+          cameraConfig,
+          {
+            fps: 20,
+            qrbox: qrBoxCalc,
+            aspectRatio: 1.0,
+          },
+          scanSuccessCallback,
+          () => {}
+        );
+      } catch (primaryStartErr) {
+        console.warn('Primary camera start failed, trying user camera fallback:', primaryStartErr);
+        // Fallback for laptops / desktop webcams that don't have an environment camera
+        await qrScanner.start(
+          { facingMode: 'user' },
+          {
+            fps: 20,
+            qrbox: qrBoxCalc,
+            aspectRatio: 1.0,
+          },
+          scanSuccessCallback,
+          () => {}
         );
       }
-    };
+
+      setCameraActive(true);
+      setCameraError(null);
+    } catch (err: any) {
+      console.warn('Camera start error or permission denied:', err);
+      setCameraActive(false);
+      setCameraError(
+        'Kamera belum aktif atau izin belum diberikan. Klik tombol di bawah atau izinkan akses kamera di ikon gembok browser Anda.'
+      );
+    }
+  };
+
+  // Start html5-qrcode scanner automatically on mount
+  useEffect(() => {
+    let isMounted = true;
 
     const initTimer = setTimeout(() => {
-      startScanner();
+      if (isMounted) {
+        startScanner();
+      }
     }, 150);
 
     return () => {
       isMounted = false;
       clearTimeout(initTimer);
-      if (qrScanner) {
+      if (scannerRef.current) {
         try {
-          qrScanner.stop().catch(() => {}).then(() => {
-            try {
-              qrScanner.clear();
-            } catch (e) {}
-          });
+          const s = scannerRef.current as any;
+          if (s.isScanning) {
+            s.stop().catch(() => {}).then(() => {
+              try {
+                s.clear();
+              } catch (e) {}
+            });
+          }
         } catch (e) {}
       }
     };
@@ -545,8 +558,17 @@ export default function TeacherScanPage() {
             </div>
 
             {cameraError && (
-              <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.85rem', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', borderRadius: 'var(--radius-md)', fontSize: '0.78rem', color: 'var(--warning)' }}>
-                {cameraError}
+              <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', borderRadius: 'var(--radius-md)', fontSize: '0.8rem', color: 'var(--warning)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div>{cameraError}</div>
+                <button
+                  type="button"
+                  onClick={() => startScanner()}
+                  className="btn btn-primary btn-sm"
+                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem' }}
+                >
+                  <RotateCcw size={14} />
+                  Buka / Muat Ulang Kamera Sekarang
+                </button>
               </div>
             )}
 
