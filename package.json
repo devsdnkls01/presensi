@@ -1,0 +1,43 @@
+{
+  "name": "presensi-siswa",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@supabase/server": "^1.8.0",
+    "@supabase/supabase-js": "^2.117.1",
+    "@types/pg": "^8.23.1",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.11.0",
+    "html2canvas": "^1.4.1",
+    "html5-qrcode": "^2.3.8",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.468.0",
+    "next": "^14.2.20",
+    "pg": "^8.23.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.17.9",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "prisma": "^5.22.0",
+    "sharp": "^0.35.4",
+    "typescript": "^5.7.2"
+  }
+}

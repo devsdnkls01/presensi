@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model School {
+  id                String             @id @default(uuid())
+  name              String
+  npsn              String             @unique
+  address           String?
+  logo              String?
+  checkInStartTime  String             @default("06:00")
+  checkInEndTime    String             @default("07:45")
+  lateAfter         String             @default("07:45")
+
+  users             User[]
+  classes           ClassRoom[]
+  students          Student[]
+  attendance        Attendance[]
+  printRequests     CardPrintRequest[]
+  holidays          SchoolHoliday[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  username  String   @unique
+  password  String
+  role      String   // "DEVELOPER", "SCHOOL_ADMIN", "TEACHER"
+  schoolId  String?
+  school    School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ClassRoom {
+  id        String    @id @default(uuid())
+  name      String    // e.g. "Kelas VI A"
+  grade     Int       // 1 - 6
+  section   String    // "A", "B", etc.
+  schoolId  String
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  students  Student[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Student {
+  id          String        @id @default(uuid())
+  nis         String
+  nisn        String?
+  fullName    String
+  gender      String        // "L" / "P"
+  classRoomId String
+  classRoom   ClassRoom     @relation(fields: [classRoomId], references: [id], onDelete: Cascade)
+  photoUrl    String?
+  status      String        @default("AKTIF") // "AKTIF" / "NONAKTIF"
+  schoolId    String
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  cards       StudentCard[]
+  attendance  Attendance[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([schoolId, nis])
+}
+
+model StudentCard {
+  id             String            @id @default(uuid())
+  cardId         String            @unique // e.g. "KLS01-2026-000125"
+  studentId      String
+  student        Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status         String            @default("DRAFT") // "DRAFT", "DIAJUKAN", "DIVERIFIKASI", "SIAP_CETAK", "DICETAK", "AKTIF", "NONAKTIF"
+  qrToken        QrToken?
+  printRequestId String?
+  printRequest   CardPrintRequest? @relation(fields: [printRequestId], references: [id], onDelete: SetNull)
+  batchId        String?
+  batch          CardPrintBatch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  activatedAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+}
+
+model QrToken {
+  id        String      @id @default(uuid())
+  token     String      @unique // e.g. "STU-8F72KD91"
+  cardId    String      @unique
+  card      StudentCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model Attendance {
+  id         String   @id @default(uuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  date       String   // "YYYY-MM-DD"
+  time       String   // "HH:mm:ss"
+  status     String   // "HADIR" / "TERLAMBAT" / "IZIN" / "SAKIT" / "ALPHA"
+  scannedBy  String   // Petugas / Guru name
+  deviceInfo String?
+  notes      String?  // Catatan keterangan khusus (izin/sakit/hadir manual)
+  createdAt  DateTime @default(now())
+
+  @@unique([studentId, date])
+}
+
+model CardPrintRequest {
+  id            String        @id @default(uuid())
+  schoolId      String
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  requestNumber String        @unique
+  status        String        @default("MENUNGGU_VERIFIKASI") // "MENUNGGU_VERIFIKASI", "DIVERIFIKASI", "DALAM_PROSES", "SELESAI", "DITOLAK"
+  notes         String?
+  cards         StudentCard[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model CardPrintBatch {
+  id          String        @id @default(uuid())
+  batchNumber String        @unique
+  paperSize   String        @default("LEGAL") // "LEGAL" (8.5 x 14 inch)
+  totalCards  Int
+  status      String        @default("SIAP_CETAK") // "SIAP_CETAK", "DICETAK", "SELESAI"
+  printedAt   DateTime?
+  cards       StudentCard[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model CardTemplate {
+  id                 String   @id @default(uuid())
+  name               String
+  templateId         String   @default("sapphire-navy")
+  primaryColor       String   @default("#1e3a8a")
+  secondaryColor     String   @default("#3b82f6")
+  schoolLogoPosition String   @default("TOP_LEFT")
+  isDefault          Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  actor     String
+  details   String
+  schoolId  String?
+  school    School?  @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model SchoolHoliday {
+  id          String   @id @default(uuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  date        String   // "YYYY-MM-DD"
+  description String   // e.g. "Tahun Baru Masehi", "Libur Semester"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([schoolId, date])
+}
+
