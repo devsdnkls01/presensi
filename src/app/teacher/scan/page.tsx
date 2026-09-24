@@ -86,20 +86,39 @@ export default function TeacherScanPage() {
     if (!Array.isArray(cards)) return;
     const map = new Map();
     cards.forEach((c: any) => {
-      if (c.qrToken?.token) map.set(c.qrToken.token, c.student);
-      if (c.cardId) map.set(c.cardId, c.student);
-      if (c.student?.nis) map.set(c.student.nis, c.student);
-      if (c.student?.id) map.set(c.student.id, c.student);
+      const st = c.student;
+      if (!st) return;
+      const enrichedStudent = {
+        ...st,
+        cardId: c.cardId || st.nis,
+        schoolName: st.school?.name || '',
+      };
+
+      if (c.qrToken?.token) {
+        map.set(c.qrToken.token, enrichedStudent);
+        map.set(c.qrToken.token.trim(), enrichedStudent);
+      }
+      if (c.cardId) {
+        map.set(c.cardId, enrichedStudent);
+        map.set(c.cardId.trim(), enrichedStudent);
+      }
+      if (st.nis) {
+        map.set(st.nis, enrichedStudent);
+        map.set(st.nis.trim(), enrichedStudent);
+      }
+      if (st.id) {
+        map.set(st.id, enrichedStudent);
+      }
     });
     studentCacheRef.current = map;
     setCachedStudentsCount(cards.length);
   };
 
-  // Download all active cards from server and store persistently in device localStorage
+  // Download all active & printed cards from server and store persistently in device localStorage
   const downloadAndSaveAllCards = useCallback(async (isManual = false) => {
     try {
       setIsSyncingCache(true);
-      const res = await fetch('/api/school/cards?status=AKTIF');
+      const res = await fetch('/api/school/cards');
       const data = await res.json();
       if (data.cards && Array.isArray(data.cards)) {
         populateStudentMap(data.cards);
@@ -108,7 +127,7 @@ export default function TeacherScanPage() {
           localStorage.setItem('smartsiswa_cache_time', new Date().toISOString());
         } catch (e) {}
         if (isManual) {
-          setCacheSyncMessage(`✓ Berhasil mendownload ${data.cards.length} data siswa ke perangkat!`);
+          setCacheSyncMessage(`✓ Berhasil mendownload ${data.cards.length} data siswa lengkap ke perangkat!`);
           setTimeout(() => setCacheSyncMessage(null), 3000);
         }
       }
@@ -287,8 +306,38 @@ export default function TeacherScanPage() {
       .then((res) => res.json())
       .then((serverData) => {
         if (serverData && serverData.student) {
-          // If server provides richer student data, smoothly enrich cache
-          setScanResult((prev) => (prev && prev.student?.nis === serverData.student.nis ? serverData : prev));
+          const resolved = serverData.student;
+          // Store in device cache so next time it is instant
+          studentCacheRef.current.set(trimmed, resolved);
+          if (resolved.nis) studentCacheRef.current.set(resolved.nis, resolved);
+          if (resolved.cardId) studentCacheRef.current.set(resolved.cardId, resolved);
+
+          // Update active scan result card
+          setScanResult((prev) =>
+            prev &&
+            (prev.student?.nis === resolved.nis ||
+              prev.student?.cardId === trimmed ||
+              prev.student?.nis === trimmed ||
+              prev.student?.fullName === 'Siswa Terdaftar')
+              ? {
+                  ...prev,
+                  student: resolved,
+                  attendance: serverData.attendance || prev.attendance,
+                }
+              : prev
+          );
+
+          // Update recent scans list table
+          setRecentScans((prev) =>
+            prev.map((item) =>
+              item.student?.nis === trimmed ||
+              item.student?.cardId === trimmed ||
+              item.student?.nis === resolved.nis ||
+              item.student?.fullName === 'Siswa Terdaftar'
+                ? { ...item, student: resolved }
+                : item
+            )
+          );
         }
       })
       .catch((err) => {

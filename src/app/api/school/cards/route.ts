@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
         student: {
           ...(schoolId ? { schoolId } : {}),
         },
-        ...(status ? { status } : {}),
+        ...(status ? { status } : { status: { not: 'NONAKTIF' } }),
       },
       include: {
         student: {
