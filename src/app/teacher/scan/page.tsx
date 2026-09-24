@@ -81,6 +81,25 @@ export default function TeacherScanPage() {
   const isProcessingRef = useRef(false);
   const lastScannedTokenRef = useRef<string>('');
   const lastScannedTimeRef = useRef<number>(0);
+  const studentCacheRef = useRef<Map<string, any>>(new Map());
+
+  // Pre-load student card cache for 0ms instant scan recognition
+  useEffect(() => {
+    fetch('/api/school/cards?status=AKTIF')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.cards && Array.isArray(data.cards)) {
+          const map = new Map();
+          data.cards.forEach((c: any) => {
+            if (c.qrToken?.token) map.set(c.qrToken.token, c.student);
+            if (c.cardId) map.set(c.cardId, c.student);
+            if (c.student?.nis) map.set(c.student.nis, c.student);
+          });
+          studentCacheRef.current = map;
+        }
+      })
+      .catch(() => {});
+  }, [user?.schoolId]);
 
   // Fetch current user & keep local cache fresh
   useEffect(() => {
@@ -130,6 +149,27 @@ export default function TeacherScanPage() {
       }
     } catch (e) {
       console.warn('Camera pause error:', e);
+    }
+
+    // 0ms Instant optimistic display from browser cache if available
+    const cachedStudent = studentCacheRef.current.get(trimmed);
+    if (cachedStudent) {
+      setScanResult({
+        success: true,
+        code: 'SUCCESS',
+        status: 'HADIR',
+        time: 'Memverifikasi...',
+        student: {
+          id: cachedStudent.id,
+          fullName: cachedStudent.fullName,
+          nis: cachedStudent.nis,
+          nisn: cachedStudent.nisn,
+          className: cachedStudent.classRoom?.name || '',
+          photoUrl: cachedStudent.photoUrl,
+          cardId: cachedStudent.cardId || '',
+          schoolName: cachedStudent.school?.name,
+        },
+      });
     }
 
     try {
@@ -190,6 +230,14 @@ export default function TeacherScanPage() {
 
     const startScanner = async () => {
       try {
+        // Wait until #qr-reader element is guaranteed to be in DOM
+        let attempts = 0;
+        while (!document.getElementById('qr-reader') && attempts < 30) {
+          await new Promise((r) => setTimeout(r, 60));
+          attempts++;
+        }
+        if (!isMounted || !document.getElementById('qr-reader')) return;
+
         const container = document.getElementById('qr-reader');
         if (container) {
           container.innerHTML = '';
@@ -306,16 +354,15 @@ export default function TeacherScanPage() {
     }
   };
 
-  if (!user) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-        Memuat sistem presensi...
-      </div>
-    );
-  }
+  const activeUser: SessionUser = user || {
+    id: '',
+    name: 'Petugas Presensi',
+    username: 'guru',
+    role: 'TEACHER',
+  };
 
   return (
-    <AppLayout user={user}>
+    <AppLayout user={activeUser}>
       <div style={{ maxWidth: '1080px', margin: '0 auto' }}>
         {/* Top Header */}
         <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
@@ -1062,7 +1109,7 @@ export default function TeacherScanPage() {
                     <div>
                       <span style={{ color: '#64748b' }}>Petugas:</span>{' '}
                       <strong style={{ color: '#0f172a' }}>
-                        {scanResult.attendance?.scannedBy || user.name}
+                        {scanResult.attendance?.scannedBy || activeUser.name}
                       </strong>
                     </div>
                   </div>
