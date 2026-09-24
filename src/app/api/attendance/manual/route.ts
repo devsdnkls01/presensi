@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
+import { getWIBDate, getWIBTime } from '@/lib/dateUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,9 +43,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tidak memiliki izin untuk siswa sekolah lain.' }, { status: 403 });
     }
 
-    const now = new Date();
-    const recordDate = date || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const recordTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    const recordDate = date || getWIBDate();
+    const recordTime = getWIBTime();
 
     const attendance = await prisma.attendance.upsert({
       where: {

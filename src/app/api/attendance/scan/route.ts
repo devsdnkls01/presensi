@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
+import { getWIBDate, getWIBTime } from '@/lib/dateUtils';
 
 export async function POST(req: NextRequest) {
   try {
@@ -138,11 +139,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Current time & check if already scanned today
-    const now = new Date();
-    // Format YYYY-MM-DD in local time
-    const localDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const localTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    // 3. Realtime Indonesian Western Time (WIB - Asia/Jakarta, UTC+7)
+    const localDateStr = getWIBDate();
+    const localTimeStr = getWIBTime();
 
     const existingAttendance = await prisma.attendance.findUnique({
       where: {

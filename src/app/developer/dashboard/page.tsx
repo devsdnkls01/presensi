@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import AppLayout from '@/components/AppLayout';
+import { getWIBDate } from '@/lib/dateUtils';
 import {
   School,
   Users,
@@ -22,8 +23,7 @@ export default async function DeveloperDashboardPage() {
     redirect('/login');
   }
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = getWIBDate();
 
   const totalSchools = await prisma.school.count();
   const totalStudents = await prisma.student.count();

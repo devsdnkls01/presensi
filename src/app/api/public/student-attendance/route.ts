@@ -2,12 +2,13 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getWIBDate, getWIBMonth } from '@/lib/dateUtils';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('query')?.trim();
-    const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
+    const month = searchParams.get('month') || getWIBMonth();
 
     if (!query) {
       return NextResponse.json({ error: 'Harap masukkan NIS, NISN, atau Card ID siswa.' }, { status: 400 });
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Today's attendance
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getWIBDate();
     const todayAttendance = await prisma.attendance.findUnique({
       where: {
         studentId_date: {

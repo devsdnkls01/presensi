@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { getWIBDate, getWIBMonth } from '@/lib/dateUtils';
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const classId = searchParams.get('classId');
-    const month = searchParams.get('month') || new Date().toISOString().slice(0, 7); // e.g. "2026-09"
+    const month = searchParams.get('month') || getWIBMonth(); // e.g. "2026-09"
     const search = searchParams.get('search');
 
     // School ID resolution: Developer can query any school; others are bound to their school
@@ -119,7 +120,7 @@ export async function GET(req: NextRequest) {
     const datesList: { date: string; dayNumber: number; dayName: string; isSunday: boolean; isHoliday: boolean; holidayName: string | null }[] = [];
     const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
     let effectiveSchoolDays = 0;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getWIBDate();
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dStr = `${month}-${String(day).padStart(2, '0')}`;

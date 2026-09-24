@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import AppLayout from '@/components/AppLayout';
+import { getWIBDate } from '@/lib/dateUtils';
 import {
   Users,
   CheckCircle2,
@@ -29,8 +30,7 @@ export default async function SchoolDashboardPage() {
     where: { id: schoolId },
   });
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = getWIBDate();
 
   // Metrics
   const totalStudents = await prisma.student.count({
